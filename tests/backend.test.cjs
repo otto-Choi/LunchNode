@@ -22,12 +22,14 @@ async function fixture(){
     for(const [date,day]of Object.entries(state.days))if(day.phase==='final'&&JSON.stringify(a.p_data.days[date])!==JSON.stringify(day))throw new ApiError(409,'FINAL','확정 기록');
     state=copy(a.p_data);version++;return true;
    }
+   case 'lunch_admin_recover_log':auth(a.p_actor_token);return true;
+   case 'lunch_admin_account':{auth(a.p_actor_token);const u=[...users.values()].find(u=>u.person.name===a.p_target_name);if(!u)throw new ApiError(400,'TARGET','未登録');if(a.p_new_hash)u.pin_hash=a.p_new_hash;for(const [key,session]of sessions)if(session.id===u.person.id)sessions.delete(key);return true;}
    case 'lunch_cleanup':for(const [key,s]of sessions)if(new Date(s.expires)<=new Date(now))sessions.delete(key);return true;
    case 'lunch_health':return true;
    default:throw new Error('Unexpected RPC '+name);
   }
  };
- const options={rpc,inviteCode:'test-invitation',cronSecret:'test-cron-secret',secureCookies:true,retryDelay:async()=>{}};
+ const options={rpc,inviteCode:'test-invitation',cronSecret:'test-cron-secret',adminSecret:'test-admin-secret-32-characters-long',secureCookies:true,retryDelay:async()=>{}};
  const backend=createBackend(options);
  const request=(path,body,cookie='',headers={})=>new Request('https://lunch.test/api/'+path,{method:body===undefined?'GET':'POST',headers:{origin:'https://lunch.test','content-type':'application/json',...(cookie?{cookie}:{}),...headers},...(body===undefined?{}:{body:JSON.stringify(body)})});
  const send=(endpoint,body,cookie='',headers={})=>backend.handle(endpoint,request(endpoint,body,cookie,headers));
@@ -113,4 +115,25 @@ test('API accepts all five meal choices for individual and bulk saves without ch
   const saved=await (await f.send('state',undefined,cookie)).json();for(const date of ['2026-10-22','2026-11-03'])assert.equal(saved.state.choices[date][f.ROSTER[0].id].meal,meal);
  }
  assert.equal((await f.send('state',{dates:['2026-10-22'],choice:{status:'join',meal:'prefer'}},cookie)).status,400);
+});
+
+
+test('operator tools require session, same origin and separate key; reset PIN and preserve choices',async()=>{
+ const f=await fixture(),actor=await f.register(),target=await f.register(f.ROSTER[1]);
+ const key=f.options.adminSecret;const check={action:'check',key};
+ assert.equal((await f.send('admin',check)).status,401);
+ assert.equal((await f.send('admin',{...check,key:'test-invitation'},actor)).status,403);
+ assert.equal((await f.send('admin',check,actor,{origin:'https://evil.test'})).status,403);
+ assert.equal((await f.send('admin',check,actor)).status,200);
+ await f.send('state',{dates:['2026-10-22'],choice:{status:'join',meal:'any'}},target);const before=f.getState();
+ assert.equal((await f.send('admin',{key,action:'reset_pin',name:f.ROSTER[1].name,newPin:'654321'},actor)).status,200);
+ assert.equal((await f.send('state',undefined,target)).status,401);assert.deepEqual(f.getState(),before);
+ let login=await f.send('auth',{action:'login',name:f.ROSTER[1].name,pin:'654321'});assert.equal(login.status,200);
+ const cookie=login.headers.get('set-cookie').split(';')[0];
+ assert.equal((await f.send('admin',{key,action:'revoke',name:f.ROSTER[1].name},actor)).status,200);
+ assert.equal((await f.send('state',undefined,cookie)).status,401);
+ f.setNow('2026-10-22T11:00:00+09:00');assert.equal((await f.send('admin',{key,action:'recover'},actor)).status,200);
+ const final=f.getState();assert.equal(final.days['2026-10-22'].phase,'final');
+ assert.equal((await f.send('admin',{key,action:'recover'},actor)).status,200);assert.deepEqual(f.getState(),final);
+ const disabled=f.createBackend({...f.options,adminSecret:''});assert.equal((await disabled.handle('admin',f.request('admin',check,actor))).status,503);
 });

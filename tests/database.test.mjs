@@ -13,7 +13,7 @@ await db.admin.query(`do $$begin if not exists(select 1 from pg_roles where roln
 for(const file of files)await db.admin.query(await fs.readFile('supabase/migrations/'+file,'utf8'));
 await db.admin.query("update lunch_settings set start_date=(now() at time zone 'Asia/Seoul')::date-7,end_date=(now() at time zone 'Asia/Seoul')::date+7");
 const {rows:[{date}]}=await db.admin.query("select to_char(d,'YYYY-MM-DD') as date from generate_series((now() at time zone 'Asia/Seoul')::date+1,(now() at time zone 'Asia/Seoul')::date+7,interval '1 day') d where extract(isodow from d)<6 order by d limit 1");
-const backend=createBackend({rpc:db.rpc,inviteCode:'ci-invitation',cronSecret:'ci-cron',secureCookies:true,retryDelay:async()=>{}});
+const backend=createBackend({rpc:db.rpc,inviteCode:'ci-invitation',cronSecret:'ci-cron',adminSecret:'ci-operator-secret-at-least-32-chars',secureCookies:true,retryDelay:async()=>{}});
 const req=(path,body,cookie='')=>new Request('https://lunch.test/api/'+path,{method:body?'POST':'GET',headers:{origin:'https://lunch.test','content-type':'application/json',cookie},...(body?{body:JSON.stringify(body)}:{})});
 const call=(path,body,cookie)=>backend.handle(path,req(path,body,cookie));
 const tokens=[];
@@ -60,4 +60,18 @@ test('all five menu values round-trip through the real database RPC unchanged',a
   const result=await call('state',{dates:[date],choice:{status:'join',meal}},cookie);assert.equal(result.status,200,await result.clone().text());
   const saved=await (await call('state',undefined,cookie)).json();assert.equal(saved.state.choices[date][ROSTER[0].id].meal,meal);
  }
+});
+
+
+test('operator account recovery is atomic, audited, service-only and preserves lunch state',async()=>{
+ const actor=(await call('auth',{action:'login',name:ROSTER[0].name,pin:'654321'})).headers.get('set-cookie').split(';')[0];
+ const target=ROSTER[1];const credential=await db.rpc('lunch_credentials',{p_name:target.name});const before=(await db.admin.query('select data,version from lunch_state')).rows;
+ const reset=await call('admin',{key:'ci-operator-secret-at-least-32-chars',action:'reset_pin',name:target.name,newPin:'987654'},actor);assert.equal(reset.status,200,await reset.clone().text());
+ assert.equal(await db.rpc('lunch_identity',{p_token_hash:digest(tokens[1].split('=')[1])}),null);
+ await assert.rejects(db.rpc('lunch_open_session',{p_user_id:target.id,p_expected_hash:credential.pin_hash,p_token_hash:digest('stale-admin-login')}),e=>e.code==='LN401');
+ const login=await call('auth',{action:'login',name:target.name,pin:'987654'});assert.equal(login.status,200);const cookie=login.headers.get('set-cookie').split(';')[0];
+ assert.equal((await call('admin',{key:'ci-operator-secret-at-least-32-chars',action:'revoke',name:target.name},actor)).status,200);
+ assert.equal((await call('state',undefined,cookie)).status,401);assert.deepEqual((await db.admin.query('select data,version from lunch_state')).rows,before);
+ const audit=await db.admin.query("select action,actor_id,target_id from lunch_admin_events order by id");assert.deepEqual(audit.rows.map(r=>r.action),['reset_pin','revoke']);assert.ok(audit.rows.every(r=>r.actor_id===ROSTER[0].id&&r.target_id===target.id));
+ const grants=(await db.admin.query("select has_function_privilege('anon','lunch_admin_account(text,text,text)','execute') as a,has_function_privilege('authenticated','lunch_admin_account(text,text,text)','execute') as b,has_table_privilege('service_role','lunch_admin_events','select') as c")).rows[0];assert.deepEqual(grants,{a:false,b:false,c:false});
 });

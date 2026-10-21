@@ -76,5 +76,20 @@ body{color:var(--ink)}
 .meal-options{grid-template-columns:repeat(5,minmax(0,1fr))}
 .meal-option{min-width:0;white-space:normal;word-break:keep-all;line-height:1.6;flex-wrap:wrap;padding:10px 7px;gap:5px}
 .meal-option>span:first-of-type{flex:1}.meal-option .radio{flex-shrink:0}
-@media(min-width:761px) and (max-width:1550px){.meal-options{grid-template-columns:repeat(3,minmax(0,1fr))}}
+
 @media(max-width:760px){.meal-options{grid-template-columns:1fr}.meal-option{flex-wrap:nowrap;padding:13px 16px}}
+
+/* Past dates remain readable on desktop; phones focus on today and later. */
+.date-cell.past-date,.date-cell.past-date.selected{background:#f0f1f2;border-color:#dfe2e5;box-shadow:none;color:#747b82}
+.date-cell.past-date .status-label,.date-cell.past-date .date-meal,.date-cell.past-date .date-number{color:#747b82}
+.date-cell.past-date .status-label{background:#e3e6e8}
+.my-group-summary{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:22px 24px;margin-top:22px;border-left:4px solid #e9531d}
+.my-group-summary h2{margin-bottom:12px}.my-group-summary h2 small{font-size:14px;font-weight:400;margin-left:10px;color:#796a62}
+.my-group-summary strong{display:block;color:#b13c14;font-size:17px;margin-bottom:8px}.my-group-summary p{line-height:1.8;font-size:16px;word-break:keep-all}
+.picked-dates{display:flex;flex-wrap:wrap;gap:8px}.picked-dates button{border:1px solid #f0c6b5;border-radius:18px;padding:8px 12px;background:#fff0e9;font-size:14px;min-height:40px}.bulk-summary{font-size:16px;line-height:1.7;font-weight:600}
+.no-upcoming{padding:24px 12px;line-height:1.8;font-size:16px;color:#747b82}
+.admin-form select{display:block;width:100%;min-height:48px;font:inherit;border:1px solid #dfd3c9;border-radius:7px;background:white;padding:10px}.admin-form .primary{margin-top:20px}.admin-form .form-help{margin-top:18px}
+@media(min-width:761px){.meal-options{grid-template-columns:repeat(5,minmax(0,1fr));gap:6px}.meal-option{flex-wrap:nowrap;gap:4px;padding:12px 5px;font-size:12px}.meal-option>svg{display:none}.meal-option>span:first-of-type{white-space:nowrap}.meal-option .radio{width:12px;height:12px}}
+@media(max-width:760px){.date-cell.past-date{display:none}.my-group-summary{align-items:stretch;flex-direction:column;padding:20px 16px}.my-group-summary .subtle-button{align-self:flex-start;min-height:44px}.calendar-panel:has(.no-upcoming) .schedule-editor,.calendar-panel:has(.no-upcoming) .bulk-editor{display:none}.calendar-dates .date-cell{grid-column-start:auto!important}}
+
+@media(min-width:761px) and (max-width:1150px){.content-grid{grid-template-columns:1fr}.right-column{display:grid;grid-template-columns:1fr 1fr;gap:16px}}

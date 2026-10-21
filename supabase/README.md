@@ -30,3 +30,5 @@ where id=1;
 등록+세션 생성, PIN 변경+모든 세션 폐기, 버전 비교+신청 저장은 각각 DB 함수 안에서 원자적으로 실행합니다. 서버에서 본 마감 전 시각과 무관하게 DB가 잠금을 얻은 뒤 한국 시각 11시 마감을 재확인합니다. 이미 확정된 조 스냅샷은 cron도 덮어쓸 수 없습니다.
 
 anon/authenticated는 테이블과 RPC에 접근할 수 없으며 service_role도 지정된 서버 전용 RPC만 실행합니다. PIN은 salted scrypt 해시, 세션은 토큰의 SHA-256만 저장합니다. 실제 토큰은 HttpOnly 쿠키로 전송합니다.
+
+운영자 도구 추가 시 `migrations/20261021090300_admin_tools.sql`을 적용하고 Vercel에 별도 32자 이상 `ADMIN_SECRET`을 설정합니다. 자세한 이용법은 루트 README를 참고하세요.

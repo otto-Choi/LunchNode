@@ -7,6 +7,9 @@ test('register, change attendance and menu, reload, and log out',async({page},in
  const loaded=page.waitForResponse(r=>r.url().endsWith('/api/state')&&r.status()===200);
  await page.getByRole('button',{name:'등록',exact:true}).click();const payload=await (await loaded).json();
  await expect(page.getByRole('heading',{name:'내 점심 일정',exact:true})).toBeVisible();
+ await expect(page.getByRole('region',{name:'오늘 내 조'})).toBeVisible();
+ for(const card of await page.locator('.date-cell.past-date').all()){if(info.project.name==='mobile')await expect(card).toBeHidden();else await expect(card).toBeVisible();}
+ if(info.project.name==='desktop'){const boxes=await page.locator('.schedule-editor .meal-option').evaluateAll(nodes=>nodes.map(n=>n.getBoundingClientRect().y));expect(new Set(boxes).size).toBe(1);}
  const future=payload.dates.find((d:string)=>new Date(payload.now)<new Date(`${d}T11:00:00+09:00`));
  const short=`${Number(future.slice(5,7))}월 ${Number(future.slice(8))}일`;
  const write=()=>page.waitForResponse(r=>r.url().endsWith('/api/state')&&r.request().method()==='POST');
@@ -34,6 +37,7 @@ test('register, change attendance and menu, reload, and log out',async({page},in
  await dateButton(openDates[0]).click();await expect(page.locator('.date-cell.picked')).toHaveCount(0);
  await blankArea(openDates[0]);await dateButton(openDates[1]).focus();await page.keyboard.press('Space');
  await expect(page.locator('.date-cell.picked')).toHaveCount(2);
+ await expect(page.getByLabel('선택한 날짜')).toContainText(title(openDates[0]));await expect(page.locator('.bulk-summary')).toContainText('2일 · 참석');
  await expect(page.getByRole('group',{name:'일괄 메뉴'}).locator('.meal-option')).toHaveText(['도시락만','도시락선호','상관없음','외식선호','외식만']);
  await expect(page.getByRole('group',{name:'일괄 메뉴'}).getByRole('button',{name:'상관없음',exact:true})).toHaveAttribute('aria-pressed','true');
  await page.getByRole('group',{name:'일괄 메뉴'}).getByRole('button',{name:'외식선호',exact:true}).click();
@@ -51,6 +55,10 @@ test('register, change attendance and menu, reload, and log out',async({page},in
  for(const d of openDates.slice(0,2))expect(saved.state.choices[d][payload.user.id].status).toBe('absent');
  expect(saved.state.choices[openDates[2]][payload.user.id]).toEqual(untouched);
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
+ await page.locator('.profile-button').click();await page.getByRole('button',{name:'운영자 도구',exact:true}).click();
+ await page.getByLabel('운영자 키',{exact:true}).fill('ci-operator-secret-at-least-32-chars');await page.getByRole('button',{name:'운영자 인증',exact:true}).click();await expect(page.getByLabel('작업',{exact:true})).toBeVisible();
+ await page.getByLabel('작업',{exact:true}).selectOption('recover');await page.getByRole('button',{name:'실행',exact:true}).click();await expect(page.getByRole('status')).toContainText('누락된 편성·마감 처리를 완료했습니다.');
+ await page.getByRole('button',{name:'닫기',exact:true}).click();
  await page.locator('.profile-button').click();await page.getByRole('button',{name:'로그아웃',exact:true}).click();await expect(page.getByRole('heading',{name:'로그인',exact:true})).toBeVisible();
  expect(errors).toEqual([]);
 });

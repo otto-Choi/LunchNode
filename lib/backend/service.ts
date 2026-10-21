@@ -4,7 +4,7 @@ import { ApiError, checkOrigin, digest, errorResponse, hashPin, newToken, pinVal
 export type Rpc = <T=unknown>(name: string, args: Record<string,unknown>) => Promise<T>;
 export type Snapshot = { version:number; state:State; people:Person[]; dates:string[]; user:Person|null; now:string };
 type Credentials = { id:string; pin_hash:string; user:Person };
-type Options = { rpc:Rpc; inviteCode:string; cronSecret:string; origin?:string; secureCookies:boolean; retryDelay?:()=>Promise<void> };
+type Options = { rpc:Rpc; inviteCode:string; cronSecret:string; adminSecret?:string; origin?:string; secureCookies:boolean; retryDelay?:()=>Promise<void> };
 export function createBackend(options:Options) {
   const {rpc}=options;
   const delay=options.retryDelay||(()=>new Promise<void>(resolve=>setTimeout(resolve,Math.floor(Math.random()*12)+2)));
@@ -87,12 +87,30 @@ export function createBackend(options:Options) {
     const result=await stateOperation(request,undefined,true);
     await rpc('lunch_cleanup',{});return response({ok:true,at:result.now});
   }
-  async function handle(endpoint:'auth'|'state'|'profile'|'cron'|'health',request:Request) {
+  async function admin(request:Request) {
+    checkOrigin(request,options.origin);await requireIdentity(request);const body=await readJson(request);
+    const ip=(request.headers.get('x-vercel-forwarded-for')||request.headers.get('x-forwarded-for')||'unknown').split(',')[0].trim();
+    if(!await rpc<boolean>('lunch_rate_limit',{p_key:digest(`admin:${ip}`),p_limit:30}))throw new ApiError(429,'RATE_LIMIT','시도 횟수를 초과했습니다. 15분 후 다시 시도해 주세요.');
+    if(!options.adminSecret||options.adminSecret.length<32)throw new ApiError(503,'ADMIN_CONFIG','운영자 키 설정이 필요합니다.');
+    if(typeof body.key!=='string'||!secretEqual(body.key,options.adminSecret))throw new ApiError(403,'ADMIN','운영자 키가 올바르지 않습니다.');
+    if(body.action==='check')return response({ok:true,message:'운영자 인증이 완료되었습니다.'});
+    if(body.action==='recover'){
+      const result=await stateOperation(request,undefined,true);await rpc('lunch_cleanup',{});
+      await rpc('lunch_admin_recover_log',{p_actor_token:tokenHash(request)});
+      return response({ok:true,message:'누락된 편성·마감 처리를 완료했습니다.',at:result.now});
+    }
+    if(body.action!=='reset_pin'&&body.action!=='revoke')throw new ApiError(400,'ACTION','잘못된 작업입니다.');
+    if(typeof body.name!=='string'||!rosterMember(body.name))throw new ApiError(400,'ROSTER','대상 이름을 확인해 주세요.');
+    const hash=body.action==='reset_pin'?await hashPin(pinValue(body.newPin)):null;
+    await rpc('lunch_admin_account',{p_actor_token:tokenHash(request),p_target_name:body.name,p_new_hash:hash});
+    return response({ok:true,message:body.action==='reset_pin'?`${body.name}님의 PIN을 재설정하고 모든 세션을 종료했습니다.`:`${body.name}님의 모든 세션을 종료했습니다.`});
+  }
+  async function handle(endpoint:'auth'|'state'|'profile'|'cron'|'health'|'admin',request:Request) {
     try {
-      const allowed=(endpoint==='auth'||endpoint==='state')?['GET','POST']:endpoint==='profile'?['POST']:['GET'];
+      const allowed=(endpoint==='auth'||endpoint==='state')?['GET','POST']:(endpoint==='profile'||endpoint==='admin')?['POST']:['GET'];
       if(!allowed.includes(request.method))return response({error:'허용되지 않은 메서드입니다.',code:'METHOD'},405);
       if(endpoint==='health'){await rpc('lunch_health',{});return response({ok:true});}
-      return await ({auth,state,profile,cron}[endpoint])(request);
+      return await ({auth,state,profile,cron,admin}[endpoint])(request);
     }catch(error){return errorResponse(error);}
   }
   return {handle};
