@@ -53,3 +53,17 @@ GitHub Actions는 폐기 가능한 PostgreSQL 17에서 실제 SQL과 RPC를 실�
 DB 통합 테스트는 **스키마를 삭제합니다**. 테스트 전용 DB에서만 `DATABASE_URL`과 `ALLOW_DATABASE_RESET=1`을 설정하고 `npm run test:db`를 실행합니다. 운영 DB URL을 사용하지 않습니다.
 
 `npm run preview:build`는 별도의 HTML 체험 파일을 재생성합니다. 과거 `ui-preview-v*.html`은 이전 작업 보존용이며 운영 앱은 `/app`, `/lib`, `/components`입니다.
+
+
+## 확인된 검증 결과
+
+[GitHub Actions](https://github.com/otto-Choi/LunchNode/actions/runs/39586447958)에서 타입 검사, 규칙/서버 21개, 실제 PostgreSQL 6개, 프로덕션 빌드, 데스크톱/모바일 브라우저 2개가 통과했습니다. 상세 상태는 `전달상태.txt`에 있습니다.
+
+실제 연결 완료 순서는 다음과 같습니다.
+
+1. Supabase SQL Editor에서 현재 `supabase/schema.sql` 전체를 실행합니다. GitHub 통합으로 순차 마이그레이션을 적용했다면 중복 실행할 필요는 없습니다.
+2. Vercel Production에 `.env.example`의 서버용 변수를 설정하고 `DEMO_MODE=false`로 둡니다.
+3. Vercel에서 최신 main을 Redeploy합니다.
+4. 실제 배포 주소 뒤에 `/api/health`를 붙여 `{ "ok": true }`를 확인합니다.
+5. 첫 화면에서 본인 이름을 선택하고 공통 초대 코드와 PIN으로 등록합니다. 참석·불참을 변경한 뒤 새로고침하여 저장을 확인합니다.
+6. Vercel의 Cron Jobs에서 등록된 두 예약 작업과 실행 로그를 확인합니다. 자동 DB 배포를 켜려면 Supabase의 migration 이력을 먼저 맞춥니다.
