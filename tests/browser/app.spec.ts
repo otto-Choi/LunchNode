@@ -15,6 +15,38 @@ test('register, change attendance and menu, reload, and log out',async({page},in
  await page.getByRole('button',{name:'외부 식사',exact:true}).click();pending=write();await page.getByRole('button',{name:'저장',exact:true}).click();expect((await pending).status()).toBe(200);
  await page.reload();await expect(page.locator('.date-cell.selected .date-meal')).toHaveText('외부 식사');
  pending=write();await page.getByRole('button',{name:`${short} 불참`,exact:true}).click();expect((await pending).status()).toBe(200);await expect(page.locator('.date-cell.selected .status-label')).toHaveText('불참');
+
+ // Select a date through the card's padding, away from both its number and action buttons.
+ const openDates=payload.dates.filter((d:string)=>new Date(payload.now)<new Date(`${d}T11:00:00+09:00`));
+ const title=(d:string)=>`${Number(d.slice(5,7))}월 ${Number(d.slice(8))}일`;
+ const dateButton=(d:string)=>page.getByRole('button',{name:`${title(d)} 선택`,exact:true});
+ const blankArea=async(d:string)=>{const card=page.locator('.date-cell').filter({has:dateButton(d)});const box=await card.boundingBox();if(!box)throw new Error('Date card missing');await card.click({position:{x:box.width-6,y:box.height-6}});};
+ await blankArea(openDates[1]);await expect(dateButton(openDates[1])).toHaveAttribute('aria-pressed','true');
+ const readState=async()=>{const r=await page.request.get('/api/state');expect(r.ok()).toBe(true);return r.json();};
+ const beforeBulk=await readState();const untouched=beforeBulk.state.choices[openDates[2]][payload.user.id];
+ await page.getByRole('button',{name:'여러 날짜 참석/불참',exact:true}).click();
+ await expect(page.getByRole('button',{name:'참석으로 저장',exact:true})).toBeDisabled();
+ const closedDate=payload.dates.find((d:string)=>new Date(payload.now)>=new Date(`${d}T11:00:00+09:00`));
+ if(closedDate)await expect(dateButton(closedDate)).toBeDisabled();
+ await blankArea(openDates[0]);await expect(page.locator('.date-cell.picked')).toHaveCount(1);
+ await dateButton(openDates[0]).click();await expect(page.locator('.date-cell.picked')).toHaveCount(0);
+ await blankArea(openDates[0]);await dateButton(openDates[1]).focus();await page.keyboard.press('Space');
+ await expect(page.locator('.date-cell.picked')).toHaveCount(2);
+ await expect(page.getByRole('group',{name:'일괄 메뉴'}).getByRole('button',{name:'상관 없음',exact:true})).toHaveAttribute('aria-pressed','true');
+ await page.getByRole('group',{name:'일괄 메뉴'}).getByRole('button',{name:'외부 식사',exact:true}).click();
+ pending=write();await page.getByRole('button',{name:'참석으로 저장',exact:true}).click();const bulkJoin=await pending;expect(bulkJoin.status()).toBe(200);
+ expect(bulkJoin.request().postDataJSON()).toEqual({dates:openDates.slice(0,2),choice:{status:'join',meal:'outside'}});
+ await expect(page.locator('.bulk-editor')).toHaveCount(0);
+ let saved=await readState();for(const d of openDates.slice(0,2))expect(saved.state.choices[d][payload.user.id]).toEqual({status:'join',meal:'outside'});
+ expect(saved.state.choices[openDates[2]][payload.user.id]).toEqual(untouched);
+ await page.getByRole('button',{name:'여러 날짜 참석/불참',exact:true}).click();
+ await blankArea(openDates[0]);await blankArea(openDates[1]);await page.getByRole('group',{name:'일괄 참석 여부'}).getByRole('button',{name:'불참',exact:true}).click();
+ await expect(page.getByRole('group',{name:'일괄 메뉴'})).toHaveCount(0);
+ pending=write();await page.getByRole('button',{name:'불참으로 저장',exact:true}).click();expect((await pending).status()).toBe(200);
+ await expect(page.locator('.bulk-editor')).toHaveCount(0);await page.reload();
+ await expect(page.getByRole('heading',{name:'내 점심 일정',exact:true})).toBeVisible();saved=await readState();
+ for(const d of openDates.slice(0,2))expect(saved.state.choices[d][payload.user.id].status).toBe('absent');
+ expect(saved.state.choices[openDates[2]][payload.user.id]).toEqual(untouched);
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
  await page.locator('.profile-button').click();await page.getByRole('button',{name:'로그아웃',exact:true}).click();await expect(page.getByRole('heading',{name:'로그인',exact:true})).toBeVisible();
  expect(errors).toEqual([]);

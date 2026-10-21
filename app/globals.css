@@ -56,3 +56,19 @@ body{color:var(--ink)}
 @media(max-width:760px){.top-actions{gap:8px}.topbar{height:auto;min-height:76px;gap:12px;padding-block:12px;flex-wrap:wrap}.topbar .breadcrumb{font-size:14px;gap:6px}.demo-user-select{font-size:14px;max-width:190px;min-height:46px}.topbar .top-actions:has(.demo-user-select) .profile-wrap{display:none}.sidebar .brand{margin-bottom:0}.stat-card>div>span{min-height:0;font-size:14px}.stat-card{gap:8px}.demo-bar{padding-block:9px}.default-status-note{font-size:14px}.page-heading .heading-row{margin-top:0}.stats-grid{margin-top:20px}.roster-names{grid-template-columns:repeat(2,1fr)}}
 .date-select{padding:0;width:100%;min-height:32px;justify-content:flex-start}.card-attendance{display:grid;grid-template-columns:1fr 1fr;gap:4px;width:100%;margin-top:auto}.card-attendance button{min-height:36px;padding:7px 2px;border:1px solid #e2d4ca;border-radius:5px;background:white;color:#6c5545;font-size:12px}.card-attendance button.active{background:#ffe0cf;border-color:#e9531d;color:#8e310e;font-weight:700}.attendance-options{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:18px}.attendance-options button{border:1px solid #dfcec2;background:white;border-radius:8px;min-height:48px;font-size:16px}.attendance-options button.chosen{background:#fff0e9;border-color:#e9531d;color:#a83d15;font-weight:700}.field-label{font-size:14px;margin-top:18px;color:#796353}.field-label+.meal-options{margin-top:9px}.date-cell{cursor:default}.date-cell:has(.date-select:focus-visible){outline:2px solid #e9531d;outline-offset:2px}
 @media(max-width:760px){.card-attendance{gap:5px;margin-top:5px}.card-attendance button{font-size:14px;min-height:44px}.date-cell,.date-cell.selected{padding:12px 7px;min-height:185px}.date-number:after{display:none}.date-select .date-number:after{content:attr(data-weekday);display:inline-block}.date-number{font-size:22px}.date-meal{font-size:14px}.calendar-dates{grid-template-columns:repeat(3,minmax(0,1fr))}}
+
+/* A single full-card button provides a large target without nesting action buttons. */
+.date-cell{position:relative;cursor:pointer}
+.date-hit-target{position:absolute;inset:0;z-index:1;width:100%;height:100%;padding:0;border:0;border-radius:inherit;background:transparent}
+.date-hit-target:disabled{cursor:default;opacity:1}
+.date-cell>.date-select,.date-cell>.status-label,.date-cell>.date-meal,.date-cell>.cell-bottom{pointer-events:none}
+.date-cell>.date-select{display:flex;justify-content:flex-start}
+.card-attendance{position:relative;z-index:2}
+.date-cell:has(.date-hit-target:focus-visible){outline:2px solid #e9531d;outline-offset:2px}
+.date-hit-target:focus-visible{outline-offset:-3px}
+.date-cell.picked{border-color:#e9531d;background:#fff0e9}
+.date-pick-indicator{position:absolute;top:8px;right:7px;display:flex;align-items:center;justify-content:center;background:#e9531d;color:white;width:18px;height:18px;border-radius:50%;pointer-events:none}
+.bulk-editor{display:flex;flex-direction:column;align-items:stretch;gap:16px}
+.bulk-editor .attendance-options,.bulk-editor .meal-options,.bulk-editor .field-label{margin-top:0}
+.bulk-editor>.primary{align-self:flex-end}
+@media(max-width:760px){.bulk-editor>.primary{align-self:stretch}.date-cell:has(.date-pick-indicator) .date-select{padding-right:12px}}

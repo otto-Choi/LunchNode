@@ -95,3 +95,13 @@ test('Supabase gateway returns safe errors and does not reveal credentials or ra
  const conflict=f.supabaseRpc('https://project.supabase.co','secret',async()=>Response.json({code:'LN409',message:'마감'},{status:400}));await assert.rejects(conflict('lunch_commit_state',{}),e=>e.status===409);
  const unavailable=f.createBackend({...f.options,rpc:async()=>{throw new Error('password secret detail');}});const r=await unavailable.handle('health',f.request('health'));assert.equal(r.status,500);assert.ok(!(await r.text()).includes('secret'));
 });
+
+test('bulk attendance and absence update only selected dates and persist the selected menu',async()=>{
+ const f=await fixture();const cookie=await f.register();const picked=['2026-10-22','2026-10-23','2026-11-02'];
+ let result=await f.send('state',{dates:picked,choice:{status:'join',meal:'outside'}},cookie);assert.equal(result.status,200);
+ let saved=await (await f.send('state',undefined,cookie)).json();for(const date of picked)assert.deepEqual(saved.state.choices[date][f.ROSTER[0].id],{status:'join',meal:'outside'});
+ const untouched=saved.state.choices['2026-11-03'][f.ROSTER[0].id];
+ result=await f.send('state',{dates:picked,choice:{status:'absent',meal:'any'}},cookie);assert.equal(result.status,200);
+ saved=await (await f.send('state',undefined,cookie)).json();for(const date of picked)assert.equal(saved.state.choices[date][f.ROSTER[0].id].status,'absent');
+ assert.deepEqual(saved.state.choices['2026-11-03'][f.ROSTER[0].id],untouched);
+});
