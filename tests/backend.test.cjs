@@ -22,6 +22,11 @@ async function fixture(){
     for(const [date,day]of Object.entries(state.days))if(day.phase==='final'&&JSON.stringify(a.p_data.days[date])!==JSON.stringify(day))throw new ApiError(409,'FINAL','확정 기록');
     state=copy(a.p_data);version++;return true;
    }
+   case 'lunch_admin_rematch':{
+    auth(a.p_actor_token);if(version!==a.p_expected_version)return false;
+    if(new Date(now)>=new Date(`${a.p_date}T11:00:00+09:00`)||state.days[a.p_date]?.phase==='final')throw new ApiError(409,'CLOSED','마감');
+    state.days[a.p_date]={...state.days[a.p_date],groups:copy(a.p_groups),rematchedAt:now};version++;return true;
+   }
    case 'lunch_admin_recover_log':auth(a.p_actor_token);return true;
    case 'lunch_admin_account':{auth(a.p_actor_token);const u=[...users.values()].find(u=>u.person.name===a.p_target_name);if(!u)throw new ApiError(400,'TARGET','未登録');if(a.p_new_hash)u.pin_hash=a.p_new_hash;for(const [key,session]of sessions)if(session.id===u.person.id)sessions.delete(key);return true;}
    case 'lunch_cleanup':for(const [key,s]of sessions)if(new Date(s.expires)<=new Date(now))sessions.delete(key);return true;
@@ -136,4 +141,32 @@ test('operator tools require session, same origin and separate key; reset PIN an
  const final=f.getState();assert.equal(final.days['2026-10-22'].phase,'final');
  assert.equal((await f.send('admin',{key,action:'recover'},actor)).status,200);assert.deepEqual(f.getState(),final);
  const disabled=f.createBackend({...f.options,adminSecret:''});assert.equal((await disabled.handle('admin',f.request('admin',check,actor))).status,503);
+});
+
+
+test('operator rematch includes late participants, preserves choices and history, rejects early and finalized days',async()=>{
+ const f=await fixture();const cookies=await Promise.all(f.ROSTER.slice(0,8).map(p=>f.register(p)));const key=f.options.adminSecret,date='2026-10-22';
+ const rematch=(body={},cookie=cookies[0])=>f.send('admin',{key,action:'rematch',date,...body},cookie);
+ assert.equal((await rematch()).status,409);assert.equal((await rematch({date:'2026-10-24'})).status,400);
+ for(const c of cookies.slice(0,3))await f.send('state',{dates:[date],choice:{status:'join',meal:'any'}},c);
+ f.setNow('2026-10-21T22:00:00+09:00');await f.send('state',undefined,cookies[0]);
+ for(const c of cookies.slice(3))await f.send('state',{dates:[date],choice:{status:'join',meal:'any'}},c);
+ const before=f.getState();assert.deepEqual(before.days[date].groups.map(g=>g.members.length),[5,3]);
+ assert.equal((await rematch({key:'bad'})).status,403);assert.equal((await rematch({},'')).status,401);
+ assert.equal((await rematch()).status,200);let saved=f.getState();assert.deepEqual(saved.choices,before.choices);
+ assert.deepEqual(saved.days[date].groups.map(g=>g.members.length),[4,4]);assert.equal(saved.days[date].phase,'matched');assert.ok(saved.days[date].rematchedAt);
+ const ids=saved.days[date].groups.flatMap(g=>g.members.map(p=>p.id));assert.equal(new Set(ids).size,8);
+ assert.equal((await rematch()).status,200);saved=f.getState();assert.equal(Object.keys(saved.days).length,1);
+ f.setNow('2026-10-22T11:00:00+09:00');assert.equal((await rematch()).status,409);assert.deepEqual(f.getState(),saved);
+ await f.send('state',undefined,cookies[0]);const final=f.getState();assert.equal(final.days[date].phase,'final');assert.equal((await rematch()).status,409);assert.deepEqual(f.getState(),final);
+});
+
+test('rematch retries from current attendance after a concurrent state write',async()=>{
+ const f=await fixture(),actor=await f.register(),late=await f.register(f.ROSTER[1]),date='2026-10-22';
+ await f.send('state',{dates:[date],choice:{status:'join',meal:'lunchbox'}},actor);f.setNow('2026-10-21T22:00:00+09:00');await f.send('state',undefined,actor);
+ let conflicts=0;const backend=f.createBackend({...f.options,rpc:async(n,a)=>{
+  if(n==='lunch_admin_rematch'&&conflicts++===0){await f.send('state',{dates:[date],choice:{status:'join',meal:'outside'}},late);return false;}return f.rpc(n,a);
+ }});
+ const result=await backend.handle('admin',f.request('admin',{key:f.options.adminSecret,action:'rematch',date},actor));assert.equal(result.status,200);assert.equal(conflicts,2);
+ const groups=f.getState().days[date].groups;assert.equal(groups.flatMap(g=>g.members).length,2);for(const g of groups)for(const p of g.members)assert.equal(g.meal,p.id===f.ROSTER[0].id?'lunchbox':'outside');
 });

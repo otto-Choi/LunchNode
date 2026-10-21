@@ -64,3 +64,19 @@ test('register, change attendance and menu, reload, and log out',async({page},in
  await page.locator('.profile-button').click();await page.getByRole('button',{name:'로그아웃',exact:true}).click();await expect(page.getByRole('heading',{name:'로그인',exact:true})).toBeVisible();
  expect(errors).toEqual([]);
 });
+
+test('operator rematch requires date and confirmation, submits the selected day and refreshes results',async({page})=>{
+ // Isolate the time-dependent UI. Production SQL and lock/cutoff behavior are covered by test:db.
+ const person={id:'00000000-0000-4000-8000-000000000001',name:'권도영',className:'4반'};
+ const date='2026-10-22';let refreshed=false;let requested:any=null;
+ const payload=()=>({demo:false,user:person,people:[person],dates:[date,'2026-10-23'],now:`${date}T10:00:00+09:00`,state:{choices:{[date]:{[person.id]:{status:'join',meal:'any'}}},days:{[date]:{phase:'matched',matchedAt:'2026-10-21T22:00:00+09:00',...(refreshed?{rematchedAt:`${date}T10:00:00+09:00`}:{}),groups:[{id:'a',meal:'lunchbox',members:[person]}]}},events:[]}});
+ await page.route('**/api/state',route=>route.fulfill({json:payload()}));
+ await page.route('**/api/admin',async route=>{const body=route.request().postDataJSON();if(body.action==='rematch'){requested=body;refreshed=true;}await route.fulfill({json:{ok:true,message:body.action==='rematch'?'전체 조를 재편성했습니다.':'운영자 인증이 완료되었습니다.'}});});
+ await page.goto('/');await page.locator('.profile-button').click();await page.getByRole('button',{name:'운영자 도구',exact:true}).click();
+ await page.getByLabel('운영자 키',{exact:true}).fill('ci-operator-secret-at-least-32-chars');await page.getByRole('button',{name:'운영자 인증',exact:true}).click();await page.getByLabel('작업',{exact:true}).selectOption('rematch');
+ const submit=page.getByRole('button',{name:'전체 조 다시 편성',exact:true});await expect(submit).toBeDisabled();await expect(page.getByLabel('재편성 날짜')).toHaveValue(date);await expect(page.getByLabel('재편성 날짜').locator('option')).toHaveCount(2);
+ await expect(page.getByRole('dialog')).toContainText('기존 조는 만남 횟수에 포함되지 않으며');
+ await page.getByRole('checkbox',{name:'기존 조가 바뀌며',exact:false}).check();await submit.click();await expect(page.getByRole('dialog').getByRole('status')).toContainText('전체 조를 재편성했습니다.');expect(requested.action).toBe('rematch');expect(requested.date).toBe(date);
+ await expect(submit).toBeDisabled();await page.getByRole('button',{name:'닫기',exact:true}).click();
+ await page.getByRole('button',{name:'조 편성 결과',exact:true}).click();await expect(page.locator('.results-note')).toContainText('재편성했습니다');
+});

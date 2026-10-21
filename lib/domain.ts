@@ -4,7 +4,7 @@ export type MealType = 'lunchbox' | 'outside';
 export type Choice = { status: 'unset' | 'join' | 'absent'; meal: Meal };
 export type Person = { id: string; name: string; className: string; defaultStatus?: 'unset' | 'absent' };
 export type Group = { id: string; meal: MealType; members: Person[] };
-export type Day = { groups: Group[]; phase: 'matched'|'final'; matchedAt: string; finalizedAt?: string };
+export type Day = { groups: Group[]; phase: 'matched'|'final'; matchedAt: string; finalizedAt?: string; rematchedAt?: string };
 export type State = { choices: Record<string, Record<string,Choice>>; days: Record<string,Day>; events: {date:string; userId:string; action:string; at:string}[] };
 export const emptyState = (): State => ({choices:{},days:{},events:[]});
 export function defaultChoice(person: Pick<Person,'defaultStatus'>): Choice { return {status:person.defaultStatus||'unset',meal:'any'}; }
@@ -147,6 +147,13 @@ export function addMember(state:State,date:string,person:Person,meal:Meal,random
     const actual=preferredMeal(meal)??(total('lunchbox')<=total('outside')?'lunchbox':'outside');
     day.groups.push({id:`${date}-${crypto.randomUUID()}`,meal:actual,members:[{...person}]});
   }
+}
+// Replaces an unfinalized assignment in place. Discarded groups never enter history.
+export function rematchDay(state:State,date:string,people:Person[],now=new Date(),random=Math.random) {
+  if(now>=cutoff(date)||state.days[date]?.phase==='final')throw new Error('오전 11시 마감 이후에는 재편성할 수 없습니다.');
+  if(now<matchTime(date)||!state.days[date])throw new Error('최초 편성 이후에만 재편성할 수 있습니다.');
+  state.days[date]={...state.days[date],groups:initialMatch(state,date,people,random),rematchedAt:now.toISOString()};
+  return state.days[date];
 }
 export function syncDue(state:State,dates:string[],people:Person[],now=new Date(),random=Math.random) {
   applyDefaults(state,dates,people);

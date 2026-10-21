@@ -53,3 +53,20 @@ test('only earlier finalized days affect rotation and unavoidable strict groups 
  for(const g of groups)for(const p of g.members)assert.ok(d.allowsMeal(state.choices[date][p.id].meal,g.meal));
  assert.deepEqual(groups.map(g=>g.members.length),[3,3]);
 });
+
+
+test('rematching discards provisional encounters; finalization counts only the replacement once',async()=>{
+ const [d,{ROSTER}]=await ready;const date='2026-10-22',next='2026-10-23',people=ROSTER.slice(0,8),state=d.emptyState();
+ state.choices[date]=Object.fromEntries(people.map(p=>[p.id,{status:'join',meal:'any'}]));
+ const original=[group('old-a',people.slice(0,5)),group('old-b',people.slice(5))];state.days[date]={...day(original),phase:'matched'};
+ const baseline=structuredClone(state);const clean=structuredClone(state);clean.days={};
+ d.rematchDay(state,date,people,new Date('2026-10-22T10:00:00+09:00'),random());
+ assert.deepEqual(state.days[date].groups.map(g=>g.members.length),[4,4]);assert.deepEqual(state.choices,baseline.choices);
+ for(const a of people)for(const b of people)if(a.id!==b.id)assert.equal(d.encounters(state,next,a.id,b.id),0);
+ assert.deepEqual(d.initialMatch(state,date,people,random()),d.initialMatch(clean,date,people,random()));
+ const replacement=structuredClone(state.days[date].groups);d.syncDue(state,[date],people,new Date('2026-10-22T11:00:00+09:00'));
+ for(let i=0;i<people.length;i++)for(let j=i+1;j<people.length;j++){
+  const a=people[i],b=people[j];const together=replacement.some(g=>g.members.some(p=>p.id===a.id)&&g.members.some(p=>p.id===b.id));assert.equal(d.encounters(state,next,a.id,b.id),Number(together));
+ }
+ const final=structuredClone(state);assert.throws(()=>d.rematchDay(state,date,people,new Date('2026-10-22T11:00:00+09:00')),/11시/);assert.deepEqual(state,final);
+});

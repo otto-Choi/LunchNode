@@ -32,3 +32,5 @@ where id=1;
 anon/authenticated는 테이블과 RPC에 접근할 수 없으며 service_role도 지정된 서버 전용 RPC만 실행합니다. PIN은 salted scrypt 해시, 세션은 토큰의 SHA-256만 저장합니다. 실제 토큰은 HttpOnly 쿠키로 전송합니다.
 
 운영자 도구 추가 시 `migrations/20261021090300_admin_tools.sql`을 적용하고 Vercel에 별도 32자 이상 `ADMIN_SECRET`을 설정합니다. 자세한 이용법은 루트 README를 참고하세요.
+
+운영자 전체 재편성 추가 시 `migrations/20261021090400_admin_rematch.sql`을 추가 적용합니다. 신규 DB는 최신 `schema.sql`에 포함되어 있습니다.
