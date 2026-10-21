@@ -48,7 +48,7 @@ function Auth({onDone}:{onDone:()=>void}) {
  const person=ROSTER.find(p=>p.name===name);
  return <div className="auth-page compact-auth"><div className="auth-form-wrap"><form className="auth-form" onSubmit={async e=>{e.preventDefault();setBusy(true);setError('');const f=new FormData(e.currentTarget);try{await api('/api/auth',{action:register?'register':'login',...Object.fromEntries(f)});onDone();}catch(err){setError((err as Error).message);}finally{setBusy(false);}}}>
  <a className="brand" href="/"><span className="brand-mark"><Utensils size={24}/></span>한끼</a><h2>{register?'최초 등록':'로그인'}</h2>
- <label>이름<select name="name" value={name} onChange={e=>setName(e.target.value)} required><option value="" disabled>이름 선택</option>{['4반','5반','12월 입사자'].map(group=><optgroup key={group} label={group}>{ROSTER.filter(p=>p.className===group).map(p=><option key={p.name} value={p.name}>{p.name}</option>)}</optgroup>)}</select></label>
+ <label>이름<select aria-label="이름" name="name" value={name} onChange={e=>setName(e.target.value)} required><option value="" disabled>이름 선택</option>{['4반','5반','12월 입사자'].map(group=><optgroup key={group} label={group}>{ROSTER.filter(p=>p.className===group).map(p=><option key={p.name} value={p.name}>{p.name}</option>)}</optgroup>)}</select></label>
  {person&&<p className="affiliation">{person.className}{person.defaultStatus==='absent'&&<span>기본 불참 · 참여로 변경 가능</span>}</p>}
  {register&&<label>초대 코드<input name="invite" required autoComplete="off" maxLength={100}/></label>}
  <label>숫자 6자리 PIN<input name="pin" type="password" inputMode="numeric" pattern="[0-9]{6}" maxLength={6} required autoComplete={register?'new-password':'current-password'}/></label>
