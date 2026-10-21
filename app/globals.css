@@ -93,3 +93,5 @@ body{color:var(--ink)}
 @media(max-width:760px){.date-cell.past-date{display:none}.my-group-summary{align-items:stretch;flex-direction:column;padding:20px 16px}.my-group-summary .subtle-button{align-self:flex-start;min-height:44px}.calendar-panel:has(.no-upcoming) .schedule-editor,.calendar-panel:has(.no-upcoming) .bulk-editor{display:none}.calendar-dates .date-cell{grid-column-start:auto!important}}
 
 @media(min-width:761px) and (max-width:1150px){.content-grid{grid-template-columns:1fr}.right-column{display:grid;grid-template-columns:1fr 1fr;gap:16px}}
+
+@media(max-width:760px){.no-future-schedule .today-panel{display:none}}

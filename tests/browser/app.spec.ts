@@ -38,6 +38,7 @@ test('register, change attendance and menu, reload, and log out',async({page},in
  await blankArea(openDates[0]);await dateButton(openDates[1]).focus();await page.keyboard.press('Space');
  await expect(page.locator('.date-cell.picked')).toHaveCount(2);
  await expect(page.getByLabel('선택한 날짜')).toContainText(title(openDates[0]));await expect(page.locator('.bulk-summary')).toContainText('2일 · 참석');
+ await page.getByRole('button',{name:`${title(openDates[1])} 선택 해제`,exact:true}).click();await expect(page.locator('.bulk-summary')).toContainText('1일 · 참석');await dateButton(openDates[1]).click();
  await expect(page.getByRole('group',{name:'일괄 메뉴'}).locator('.meal-option')).toHaveText(['도시락만','도시락선호','상관없음','외식선호','외식만']);
  await expect(page.getByRole('group',{name:'일괄 메뉴'}).getByRole('button',{name:'상관없음',exact:true})).toHaveAttribute('aria-pressed','true');
  await page.getByRole('group',{name:'일괄 메뉴'}).getByRole('button',{name:'외식선호',exact:true}).click();
@@ -55,6 +56,7 @@ test('register, change attendance and menu, reload, and log out',async({page},in
  for(const d of openDates.slice(0,2))expect(saved.state.choices[d][payload.user.id].status).toBe('absent');
  expect(saved.state.choices[openDates[2]][payload.user.id]).toEqual(untouched);
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
+ await page.getByRole('button',{name:'이용 안내',exact:false}).first().click();await expect(page.getByRole('dialog')).toContainText('이전에 덜 만난 조합');await expect(page.getByRole('dialog')).toContainText('상관없음은 양쪽 모두 배정');await page.getByRole('button',{name:'닫기',exact:true}).click();
  await page.locator('.profile-button').click();await page.getByRole('button',{name:'운영자 도구',exact:true}).click();
  await page.getByLabel('운영자 키',{exact:true}).fill('ci-operator-secret-at-least-32-chars');await page.getByRole('button',{name:'운영자 인증',exact:true}).click();await expect(page.getByLabel('작업',{exact:true})).toBeVisible();
  await page.getByLabel('작업',{exact:true}).selectOption('recover');await page.getByRole('button',{name:'실행',exact:true}).click();await expect(page.getByRole('status')).toContainText('누락된 편성·마감 처리를 완료했습니다.');
