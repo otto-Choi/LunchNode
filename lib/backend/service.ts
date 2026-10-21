@@ -1,4 +1,4 @@
-import { cutoff, setChoice, syncDue, type Choice, type Person, type State } from '../domain.ts';
+import { isMeal, cutoff, setChoice, syncDue, type Choice, type Person, type State } from '../domain.ts';
 import { rosterMember } from '../roster.ts';
 import { ApiError, checkOrigin, digest, errorResponse, hashPin, newToken, pinValue, readJson, response, secretEqual, sessionCookie, tokenFrom, verifyPin } from './security.ts';
 export type Rpc = <T=unknown>(name: string, args: Record<string,unknown>) => Promise<T>;
@@ -69,7 +69,7 @@ export function createBackend(options:Options) {
     checkOrigin(request,options.origin);await requireIdentity(request);const body=await readJson(request);
     if(!Array.isArray(body.dates)||body.dates.length<1||body.dates.length>100||body.dates.some(d=>typeof d!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(d)))throw new ApiError(400,'DATES','날짜를 선택해 주세요.');
     const choice=body.choice as Choice|undefined;
-    if(!choice||typeof choice!=='object'||!['join','absent','unset'].includes(choice.status)||!['lunchbox','outside','any'].includes(choice.meal))throw new ApiError(400,'CHOICE','참석 여부와 메뉴를 확인해 주세요.');
+    if(!choice||typeof choice!=='object'||!['join','absent','unset'].includes(choice.status)||!isMeal(choice.meal))throw new ApiError(400,'CHOICE','참석 여부와 메뉴를 확인해 주세요.');
     await stateOperation(request,{dates:[...new Set(body.dates)] as string[],choice:{status:choice.status,meal:choice.meal}});
     return response({ok:true});
   }

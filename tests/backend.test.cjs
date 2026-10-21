@@ -105,3 +105,12 @@ test('bulk attendance and absence update only selected dates and persist the sel
  saved=await (await f.send('state',undefined,cookie)).json();for(const date of picked)assert.equal(saved.state.choices[date][f.ROSTER[0].id].status,'absent');
  assert.deepEqual(saved.state.choices['2026-11-03'][f.ROSTER[0].id],untouched);
 });
+
+test('API accepts all five meal choices for individual and bulk saves without changing legacy values',async()=>{
+ const f=await fixture();const cookie=await f.register();
+ for(const meal of ['lunchbox','prefer_lunchbox','any','prefer_outside','outside']){
+  const r=await f.send('state',{dates:['2026-10-22','2026-11-03'],choice:{status:'join',meal}},cookie);assert.equal(r.status,200);
+  const saved=await (await f.send('state',undefined,cookie)).json();for(const date of ['2026-10-22','2026-11-03'])assert.equal(saved.state.choices[date][f.ROSTER[0].id].meal,meal);
+ }
+ assert.equal((await f.send('state',{dates:['2026-10-22'],choice:{status:'join',meal:'prefer'}},cookie)).status,400);
+});

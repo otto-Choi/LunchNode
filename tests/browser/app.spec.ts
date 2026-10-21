@@ -12,8 +12,10 @@ test('register, change attendance and menu, reload, and log out',async({page},in
  const write=()=>page.waitForResponse(r=>r.url().endsWith('/api/state')&&r.request().method()==='POST');
  let pending=write();await page.getByRole('button',{name:`${short} 참석`,exact:true}).click();expect((await pending).status()).toBe(200);
  await expect(page.locator('.date-cell.selected .status-label')).toHaveText('참석');
- await page.getByRole('button',{name:'외부 식사',exact:true}).click();pending=write();await page.getByRole('button',{name:'저장',exact:true}).click();expect((await pending).status()).toBe(200);
- await page.reload();await expect(page.locator('.date-cell.selected .date-meal')).toHaveText('외부 식사');
+ await expect(page.locator('.schedule-editor .meal-option')).toHaveText(['도시락만','도시락선호','상관없음','외식선호','외식만']);
+ await expect(page.getByRole('button',{name:'상관없음',exact:true})).toHaveAttribute('aria-pressed','true');
+ await page.getByRole('button',{name:'외식선호',exact:true}).click();pending=write();await page.getByRole('button',{name:'저장',exact:true}).click();expect((await pending).status()).toBe(200);
+ await page.reload();await expect(page.locator('.date-cell.selected .date-meal')).toHaveText('외식선호');
  pending=write();await page.getByRole('button',{name:`${short} 불참`,exact:true}).click();expect((await pending).status()).toBe(200);await expect(page.locator('.date-cell.selected .status-label')).toHaveText('불참');
 
  // Select a date through the card's padding, away from both its number and action buttons.
@@ -32,12 +34,13 @@ test('register, change attendance and menu, reload, and log out',async({page},in
  await dateButton(openDates[0]).click();await expect(page.locator('.date-cell.picked')).toHaveCount(0);
  await blankArea(openDates[0]);await dateButton(openDates[1]).focus();await page.keyboard.press('Space');
  await expect(page.locator('.date-cell.picked')).toHaveCount(2);
- await expect(page.getByRole('group',{name:'일괄 메뉴'}).getByRole('button',{name:'상관 없음',exact:true})).toHaveAttribute('aria-pressed','true');
- await page.getByRole('group',{name:'일괄 메뉴'}).getByRole('button',{name:'외부 식사',exact:true}).click();
+ await expect(page.getByRole('group',{name:'일괄 메뉴'}).locator('.meal-option')).toHaveText(['도시락만','도시락선호','상관없음','외식선호','외식만']);
+ await expect(page.getByRole('group',{name:'일괄 메뉴'}).getByRole('button',{name:'상관없음',exact:true})).toHaveAttribute('aria-pressed','true');
+ await page.getByRole('group',{name:'일괄 메뉴'}).getByRole('button',{name:'외식선호',exact:true}).click();
  pending=write();await page.getByRole('button',{name:'참석으로 저장',exact:true}).click();const bulkJoin=await pending;expect(bulkJoin.status()).toBe(200);
- expect(bulkJoin.request().postDataJSON()).toEqual({dates:openDates.slice(0,2),choice:{status:'join',meal:'outside'}});
+ expect(bulkJoin.request().postDataJSON()).toEqual({dates:openDates.slice(0,2),choice:{status:'join',meal:'prefer_outside'}});
  await expect(page.locator('.bulk-editor')).toHaveCount(0);
- let saved=await readState();for(const d of openDates.slice(0,2))expect(saved.state.choices[d][payload.user.id]).toEqual({status:'join',meal:'outside'});
+ let saved=await readState();for(const d of openDates.slice(0,2))expect(saved.state.choices[d][payload.user.id]).toEqual({status:'join',meal:'prefer_outside'});
  expect(saved.state.choices[openDates[2]][payload.user.id]).toEqual(untouched);
  await page.getByRole('button',{name:'여러 날짜 참석/불참',exact:true}).click();
  await blankArea(openDates[0]);await blankArea(openDates[1]);await page.getByRole('group',{name:'일괄 참석 여부'}).getByRole('button',{name:'불참',exact:true}).click();

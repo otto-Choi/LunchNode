@@ -72,3 +72,9 @@ body{color:var(--ink)}
 .bulk-editor .attendance-options,.bulk-editor .meal-options,.bulk-editor .field-label{margin-top:0}
 .bulk-editor>.primary{align-self:flex-end}
 @media(max-width:760px){.bulk-editor>.primary{align-self:stretch}.date-cell:has(.date-pick-indicator) .date-select{padding-right:12px}}
+
+.meal-options{grid-template-columns:repeat(5,minmax(0,1fr))}
+.meal-option{min-width:0;white-space:normal;word-break:keep-all;line-height:1.6;flex-wrap:wrap;padding:10px 7px;gap:5px}
+.meal-option>span:first-of-type{flex:1}.meal-option .radio{flex-shrink:0}
+@media(min-width:761px) and (max-width:1550px){.meal-options{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:760px){.meal-options{grid-template-columns:1fr}.meal-option{flex-wrap:nowrap;padding:13px 16px}}

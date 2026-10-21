@@ -53,3 +53,11 @@ test('reapplying migrations preserves accounts, settings, state and PIN hashes',
  for(const file of files)await db.admin.query(await fs.readFile('supabase/migrations/'+file,'utf8'));
  assert.deepEqual((await db.admin.query('select data,version from lunch_state')).rows,before.rows);assert.deepEqual((await db.admin.query('select id,pin_hash from lunch_users order by id')).rows,users.rows);
 });
+
+test('all five menu values round-trip through the real database RPC unchanged',async()=>{
+ const login=await call('auth',{action:'login',name:ROSTER[0].name,pin:'654321'});assert.equal(login.status,200);const cookie=login.headers.get('set-cookie').split(';')[0];
+ for(const meal of ['lunchbox','prefer_lunchbox','any','prefer_outside','outside']){
+  const result=await call('state',{dates:[date],choice:{status:'join',meal}},cookie);assert.equal(result.status,200,await result.clone().text());
+  const saved=await (await call('state',undefined,cookie)).json();assert.equal(saved.state.choices[date][ROSTER[0].id].meal,meal);
+ }
+});
