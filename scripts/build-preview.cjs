@@ -1,0 +1,12 @@
+const fs=require('node:fs');const vm=require('node:vm');const path=require('node:path');const {stripTypeScriptTypes}=require('node:module');
+const root=path.resolve(__dirname,'..');
+const compile=(name)=>stripTypeScriptTypes(fs.readFileSync(path.join(root,name),'utf8')).replace(/^import .*;\s*$/gm,'').replace(/\bexport /g,'');
+const code=['lib/operation.ts','lib/domain.ts','lib/roster.ts','lib/demo.ts'].map(compile).join('\n')+'\n'+fs.readFileSync(path.join(root,'preview-app.js'),'utf8');
+const old=fs.readFileSync(path.join(root,'ui-preview-v3.html'),'utf8');const sprite=old.match(/<svg style="display:none"[\s\S]*?<\/svg>/)[0];
+const initial={innerHTML:''};const context={document:{getElementById:()=>initial},localStorage:{getItem:()=>null,setItem(){}},crypto:require('node:crypto').webcrypto,console};vm.createContext(context);vm.runInContext(code,context,{timeout:5000});
+const css=fs.readFileSync(path.join(root,'app/globals.css'),'utf8').replace(/^@import[^;]*;/,'');
+const html='<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>한끼 · 점심 신청</title><style>'+css+'</style></head><body><div id="runtime-status" class="default-status-note" role="alert">파일 미리보기에서는 버튼이 작동하지 않을 수 있습니다. 내려받은 index.html을 브라우저에서 열어 주세요.</div>'+sprite+'<div id="root">'+initial.innerHTML+'</div><script>'+code+'</script></body></html>';
+for(const name of ['ui-preview.html','ui-preview-v6.html'])fs.writeFileSync(path.join(root,name),html);
+fs.writeFileSync(path.join(root,'ui-static.html'),html.replace(/<script>[\s\S]*?<\/script>/,''));
+fs.mkdirSync(path.join(root,'browser-demo'),{recursive:true});fs.writeFileSync(path.join(root,'browser-demo/index.html'),html);
+console.log('Built interactive browser demo and static initial markup.');

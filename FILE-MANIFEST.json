@@ -1,0 +1,202 @@
+[
+  {
+    "path": ".env.example",
+    "bytes": 226,
+    "sha256": "002f2e81fbf70f2c71db265de090c49790aab88a4d4f4c5d6c9e47e31f3005d3"
+  },
+  {
+    "path": ".gitignore",
+    "bytes": 53,
+    "sha256": "89454422958afdcd28fe8c0853afcc3eb310a8d3252f98ffcae1ee2277254b18"
+  },
+  {
+    "path": "README.md",
+    "bytes": 2281,
+    "sha256": "5e44426c41482978537de327f095d1646cefd28b35b3bad2650c10d7413702d8"
+  },
+  {
+    "path": "app/api/auth/route.ts",
+    "bytes": 3643,
+    "sha256": "e6096554f17b9e91dd574a9e80d431c4a38d4f0302bd972b627064cbab6b5966"
+  },
+  {
+    "path": "app/api/cron/route.ts",
+    "bytes": 633,
+    "sha256": "a0d67a33d62019cacab1ccaf95188d2f8bc3f5960fcdd4f8ebb3194015f8c342"
+  },
+  {
+    "path": "app/api/profile/route.ts",
+    "bytes": 1440,
+    "sha256": "4f6a8f259d407aec908cadf825f42361f52d28d15b27cd6fc06a2d84d29392f4"
+  },
+  {
+    "path": "app/api/state/route.ts",
+    "bytes": 1348,
+    "sha256": "6fd8aa661e7ae39baec2834f6d9fa3055da07f441bf048967156790cd05c754e"
+  },
+  {
+    "path": "app/globals.css",
+    "bytes": 49012,
+    "sha256": "232194ae2c37de1fa27385037e71cf96cd4bd27c509efef0a5a61f99da7ce52c"
+  },
+  {
+    "path": "app/layout.tsx",
+    "bytes": 303,
+    "sha256": "7b3317ed3667af44c3c6dbfa586c93091c00d02bc0ab19272f94ff230ed0b8c5"
+  },
+  {
+    "path": "app/page.tsx",
+    "bytes": 167,
+    "sha256": "a0c7dc4bcaf66d7af75e9ca09ff1aec89e5ecacf70614841cce838555ab749ab"
+  },
+  {
+    "path": "browser-demo/index.html",
+    "bytes": 86199,
+    "sha256": "7f9440837b4c54563d414aa40c2601b2419d85153afe28a44747a8fa39f22614"
+  },
+  {
+    "path": "browser-demo/읽어주세요.txt",
+    "bytes": 975,
+    "sha256": "f43f22edfe453683f71bd106f6d1a450bd956aa8a452f563191db6118e6f0515"
+  },
+  {
+    "path": "components/lunch-app.tsx",
+    "bytes": 24614,
+    "sha256": "5f57156d23be6511312723af6709de48a13f773404af4714ae43c69b86f0980f"
+  },
+  {
+    "path": "hankki-demo.zip",
+    "bytes": 21197,
+    "sha256": "d126fc996ae2d52f1c301ffcd8b404b12dd201ff3d6885e0d561fbb14fa78028"
+  },
+  {
+    "path": "lib/demo.ts",
+    "bytes": 959,
+    "sha256": "998e2492e430818c7941ad040ae9e5320858e9dfbdd36c472b22a6862af7b401"
+  },
+  {
+    "path": "lib/domain.ts",
+    "bytes": 6451,
+    "sha256": "23ed4443a6acbb7dfe9efc758978a0be4035436243cb74ef004a70eaae904df1"
+  },
+  {
+    "path": "lib/operation.ts",
+    "bytes": 214,
+    "sha256": "61d814b830d332747a87eea285feec59a2390d4424c1e1da16a2537929e8b406"
+  },
+  {
+    "path": "lib/roster.ts",
+    "bytes": 846,
+    "sha256": "2a6d2c300cd5e8762006e9a58cb84ed26782540617a3dc8a92138951ca08c424"
+  },
+  {
+    "path": "lib/server.ts",
+    "bytes": 4292,
+    "sha256": "09cdba80163ffd7b02cef5874ea41ac1a8bf7d5277d4df2a39b8389244ea0f2c"
+  },
+  {
+    "path": "next-env.d.ts",
+    "bytes": 81,
+    "sha256": "879741880b6ab48da99dcc06dcc674d381c9826137b0496bf7bb368f302de9fc"
+  },
+  {
+    "path": "next.config.ts",
+    "bytes": 299,
+    "sha256": "3bd7be71d79a2198cd765414351edc6d1360370d5b1a2ed35ab43f49265c05b8"
+  },
+  {
+    "path": "package.json",
+    "bytes": 708,
+    "sha256": "252f51112de4aaa19902beb7ed68b49ece492705818c33dccb5662b01d3f412a"
+  },
+  {
+    "path": "preview-app.js",
+    "bytes": 13353,
+    "sha256": "82609532d21d5aceb9fd08980b4e108376e9b0c34375d944075153f501834672"
+  },
+  {
+    "path": "preview-build.py",
+    "bytes": 133,
+    "sha256": "b22d21f52d6e39a77c0ebbb13da7d66696a789168351e732ee221b85c1bad479"
+  },
+  {
+    "path": "render-preview.cjs",
+    "bytes": 1030,
+    "sha256": "2eddec7f1d7462a2957c5fb52245fb634d675ff67a352ddc278b8ec7f1340748"
+  },
+  {
+    "path": "scripts/build-preview.cjs",
+    "bytes": 1921,
+    "sha256": "074f42c6dfbc06385d0af10265f375497d62de27a87202e5844e9812ef4d41f0"
+  },
+  {
+    "path": "supabase/README.md",
+    "bytes": 1369,
+    "sha256": "ed698e438e14f664c7c2108eec28732ca9213bd686f9ecabca3e7f1443ec8a8f"
+  },
+  {
+    "path": "supabase/migrations/20261021_fixed_roster.sql",
+    "bytes": 5965,
+    "sha256": "c99ee2b05147871eb987a310b34b42614170bbcf24d55aad59ffaca02a117cb8"
+  },
+  {
+    "path": "supabase/schema.sql",
+    "bytes": 6767,
+    "sha256": "720773a1b884069b9b2c6da5438d9682c626186dd63b52bd6664c9714d733eaf"
+  },
+  {
+    "path": "tests/roster.test.cjs",
+    "bytes": 10503,
+    "sha256": "d660226bb2a35ceb7d4858da3c13d3baca9ceba1a8cb1c22ffec27b405d5b9a3"
+  },
+  {
+    "path": "tsconfig.json",
+    "bytes": 445,
+    "sha256": "999859c3eef46509711926c4cf515a34a4963577c46df33468a0bd8bdc48e9c1"
+  },
+  {
+    "path": "ui-preview-v2.html",
+    "bytes": 61981,
+    "sha256": "aaa0c216296dcbbe830b2b515508e3b3a8bad9cc26cdc5869875c6e4f98cdc88"
+  },
+  {
+    "path": "ui-preview-v3.html",
+    "bytes": 73582,
+    "sha256": "0630cbdd04581519429bbdd7b3424ebdc1a385043778fa03c176ca7e0dfb61dd"
+  },
+  {
+    "path": "ui-preview-v4.html",
+    "bytes": 81476,
+    "sha256": "26e016a6ecf776b839752ba828a4620b082934553a42c882dbae43b106c81246"
+  },
+  {
+    "path": "ui-preview-v5.html",
+    "bytes": 79933,
+    "sha256": "c85796c2dad3b1d9adec8b7f7b1eb996e319d96d45c204e58fc4ccf6bc06a220"
+  },
+  {
+    "path": "ui-preview-v6.html",
+    "bytes": 86199,
+    "sha256": "7f9440837b4c54563d414aa40c2601b2419d85153afe28a44747a8fa39f22614"
+  },
+  {
+    "path": "ui-preview.html",
+    "bytes": 86199,
+    "sha256": "7f9440837b4c54563d414aa40c2601b2419d85153afe28a44747a8fa39f22614"
+  },
+  {
+    "path": "ui-static.html",
+    "bytes": 64698,
+    "sha256": "cd625a867d61f72170ba7e4b1957b9b4804f7191af9aa562a4e4c31f10a3baa1"
+  },
+  {
+    "path": "update-ui.py",
+    "bytes": 12430,
+    "sha256": "101cce7693a7a16bb39b2f2275d753f359aa7736559b17d8021ca9bbf3277291"
+  },
+  {
+    "path": "vercel.json",
+    "bytes": 105,
+    "sha256": "ff5cf9dbb0c17ed8350688b4fb7506972f6e425d8f46d16ad8ba2ee6497c5a16"
+  }
+]

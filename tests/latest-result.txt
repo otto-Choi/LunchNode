@@ -1,0 +1,21 @@
+(node:2247) ExperimentalWarning: stripTypeScriptTypes is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ fixed roster contains the specified 20 people and affiliations (1.380885ms)
+✔ all December hires default to absent on every operating date (0.318771ms)
+✔ defaults preserve explicit attendance and cancellation restores default absence (1.77531ms)
+✔ default absent hires are excluded from matching until they opt in (5.330217ms)
+✔ late opt-in and cancellation preserve every other assignment; cutoff applies (2.957194ms)
+✔ SQL seed and migration contain exactly the same canonical roster (0.71514ms)
+✔ preview renders the real roster, all three defaults, saves participation and shows no slogans (32.900277ms)
+✔ operation period is exactly the nine requested weekdays (1.002093ms)
+✔ first match and finalization run only when due, preserve assignments on retries (2.833277ms)
+✔ demo has no premature future groups or finalized history on its first morning (11.753283ms)
+✔ rendered attendance buttons save both new dates, persist on reload, and default the menu to any (35.528235ms)
+ℹ tests 11
+ℹ suites 0
+ℹ pass 11
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 111.682277

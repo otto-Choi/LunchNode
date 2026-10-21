@@ -1,0 +1,14 @@
+const fs=require('node:fs');
+const vm=require('node:vm');
+const path='/workspace/lunch-match/ui-preview.html';
+const html=fs.readFileSync(path,'utf8');
+const match=html.match(/<script>([\s\S]*?)<\/script>/);
+if(!match)throw new Error('Preview script missing');
+const root={innerHTML:''};
+const context={localStorage:{getItem:()=>null,setItem:()=>{}},document:{getElementById:()=>root},window:{scrollTo:()=>{}},setTimeout,clearTimeout,alert:()=>{}};
+vm.createContext(context);
+vm.runInContext(match[1],context,{timeout:5000});
+if(!root.innerHTML.includes('내 점심 일정'))throw new Error('Preview render failed');
+fs.writeFileSync(path,html.replace('<div id="root"></div>',()=>'<div id="root">'+root.innerHTML+'</div>'));
+fs.writeFileSync('/workspace/lunch-match/ui-static.html',html.replace('<div id="root"></div>',()=>'<div id="root">'+root.innerHTML+'</div>').replace(/<script>[\s\S]*?<\/script>/,''));
+console.log('Rendered preview HTML:',root.innerHTML.length,'characters. Static content is present without JavaScript.');
