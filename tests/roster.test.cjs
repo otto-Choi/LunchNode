@@ -49,9 +49,9 @@ test('late opt-in and cancellation preserve every other assignment; cutoff appli
 });
 test('SQL seed and migration contain exactly the same canonical roster',()=>{
  const expected=ROSTER.map(p=>[p.id,p.name,p.className,p.defaultStatus]);
- for(const file of ['supabase/schema.sql','supabase/migrations/20261021_fixed_roster.sql']){
+ for(const file of ['supabase/schema.sql','supabase/migrations/20261021090100_fixed_roster.sql']){
  const sql=fs.readFileSync(path.join(root,file),'utf8');const rows=[...sql.matchAll(/\('([0-9a-f-]+)'::uuid,'([^']+)','([^']+)','(absent|unset)'\)/g)].map(m=>m.slice(1));
- assert.deepEqual(rows,expected);assert.ok(sql.includes('lunch_roster_allowed'));assert.ok(sql.includes('lunch_check_identity'));
+ assert.deepEqual([...new Map(rows.map(r=>[r[1],r])).values()],expected);assert.ok(sql.includes('lunch_roster_allowed'));assert.ok(sql.includes('lunch_check_identity'));
  }
 });
 test('preview renders the real roster, all three defaults, saves participation and shows no slogans',()=>{

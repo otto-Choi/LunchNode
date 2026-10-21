@@ -1,26 +1,55 @@
-# 한끼
+# LunchNode · 한끼
 
-Next.js + Supabase + Vercel 점심 신청·조 편성 앱입니다.
-
-## 현재 상태
-
-- 20명 명단과 소속, 12월 입사자 기본 불참 규칙을 구현했습니다.
-- 실제 Supabase/Vercel 연결은 없습니다. `ui-preview-v6.html`은 예시 데이터로 동작하는 독립형 UI 미리보기입니다.
-- DB 적용: `supabase/README.md`를 참고하세요. 새 설치는 `schema.sql`, 기존 설치는 `migrations/20261021_fixed_roster.sql`입니다.
-- 핵심 로직·명단·미리보기 7개 테스트가 통과했습니다. 패키지 설치가 완료되지 않아 Next.js 프로덕션 빌드 및 실제 DB 통합 테스트는 아직 실행하지 못했습니다.
+20명 전용 점심 신청·조 편성 앱입니다. Next.js 15 / React 19, Supabase PostgreSQL, Vercel을 사용합니다.
 
 ## 실행
 
-Node.js 24에서 `npm install` 후 `.env.example`을 `.env.local`로 복사하고 값을 설정한 다음 `npm run dev`로 실행합니다. DB 키는 서버 전용 환경변수입니다. 설정하지 않으면 데모로 열립니다.
+Node.js 24를 사용합니다.
 
-`npm test`로 핵심 테스트를 실행하고, `npm run preview:build`로 의존성 설치 없이 미리보기 HTML을 생성합니다.
+```sh
+npm install
+cp .env.example .env.local
+npm run dev
+```
 
-## 운영
+실제 운영 모드는 `DEMO_MODE=false`입니다. Supabase 키가 없으면 연결 오류를 보여주며 데모로 자동 전환하지 않습니다. UI만 보려면 `DEMO_MODE=true`를 명시합니다. `browser-demo/index.html`과 과거 HTML은 별도의 브라우저 로컬 체험 파일이며 실제 DB를 사용하지 않습니다.
 
-시간대는 Asia/Seoul입니다. 운영 기간은 OPERATION_START/OPERATION_END에 설정합니다. INVITE_CODE는 최초 등록용, CRON_SECRET은 Vercel Cron 인증용입니다. 이름은 목록 선택만 가능하며 소속은 고정입니다. 12월 입사자도 본인 신청으로 참여할 수 있습니다.
+## Supabase / Vercel 설정
 
-Vercel 예약 작업은 UTC 13시(한국 전날 22시), UTC 02시(한국 당일 11시)입니다. 이용 요금제의 예약 작업 수·실행 시각 제한을 배포 전에 확인해야 합니다. 지연 시 서버의 상태 읽기/변경 요청도 누락된 편성·확정을 보완하고 서버 시각으로 마감 이후 변경을 차단합니다.
+1. `supabase/README.md`를 따라 DB를 만듭니다. 새 DB는 `supabase/schema.sql` 전체 실행 또는 GitHub 통합의 순차 마이그레이션 중 하나를 선택합니다.
+2. Vercel에서 저장소 루트 `./`, Next.js, Node.js 24를 선택합니다. 빌드/설치 명령은 기본값입니다.
+3. 서버 환경변수 `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `INVITE_CODE`, `CRON_SECRET`, `DEMO_MODE=false`를 설정합니다. 비밀값에 NEXT_PUBLIC_ 접두사를 붙이지 않습니다.
+4. `APP_ORIGIN`은 선택입니다. 지정한다면 배포 주소의 origin(예: https://lunchnode.example.com)을 넣습니다. 비우면 요청 URL의 origin과 비교합니다.
+5. 배포 후 `/api/health`가 200과 `{ "ok": true }`를 반환하는지 확인하고, 알려진 참가자 이름으로 최초 등록합니다. 초대 코드는 초대받은 사용자에게 운영자가 전달합니다.
 
-현재 기본 운영 기간은 **2026-10-22 ~ 2026-11-03 (평일 9일)**입니다. 기본 기간은 `lib/operation.ts` 한 곳에서 관리합니다.
+운영 날짜의 기준은 DB `lunch_settings`입니다. 최초 기간은 **2026-10-22 ~ 2026-11-03, 평일 9일**입니다. 로컬 데모 날짜는 `lib/operation.ts`로 별도 관리합니다.
 
-파일 미리보기 화면은 스크립트를 차단할 수 있습니다. 동작 확인용 `hankki-demo.zip`을 내려받아 압축을 풀고 `index.html`을 Chrome/Safari/Edge에서 직접 열어 주세요. 화면에 스크립트 미실행 안내가 표시되면 앱이 실행되지 않은 상태입니다. 미리보기 데이터는 브라우저 로컬에만 저장됩니다.
+## API
+
+| 경로 | 메서드 | 용도 |
+|---|---|---|
+| `/api/auth` | GET | 현재 로그인 사용자 또는 null |
+| `/api/auth` | POST | action=register/login/logout |
+| `/api/state` | GET | 전체 일정·조·본인 신청; 로그인 필요 |
+| `/api/state` | POST | dates 배열 + choice(status,meal); 본인 신청만 변경 |
+| `/api/profile` | POST | currentPin/newPin으로 PIN 변경 및 전체 세션 폐기 |
+| `/api/cron` | GET | Bearer CRON_SECRET으로 누락 편성·확정 처리 |
+| `/api/health` | GET | 비밀값을 노출하지 않는 DB/스키마 상태 확인 |
+
+POST는 같은 origin의 JSON만 받습니다. 미인증은 401, 잘못된 입력은 400, 다른 origin은 403, 마감·충돌은 409, 과도한 로그인은 429, DB 연결/설정 오류는 503입니다. 응답은 캐시하지 않습니다. 쿠키는 운영 환경에서 Secure·HttpOnly·SameSite=Lax이며 최대 21일입니다.
+
+자동 편성은 전날 22시, 최종 확정은 당일 11시(Asia/Seoul)입니다. `vercel.json`의 UTC 예약 작업 두 개가 이를 실행합니다. 장애 복구를 위해 일반 상태 읽기/쓰기 요청도 누락된 작업을 보완합니다. cron이 여러 번 실행돼도 기존 조를 다시 섞지 않습니다. 늦은 최초 실행은 당시 저장된 신청으로 복구하므로 정상 시각 실행과 완전히 같은 결과를 보장하지 않습니다.
+
+## 검증
+
+```sh
+npm test
+npm run typecheck
+npm run build
+```
+
+GitHub Actions는 폐기 가능한 PostgreSQL 17에서 실제 SQL과 RPC를 실행한 뒤 Next.js 빌드 및 데스크톱/모바일 Chromium 테스트를 수행합니다. 브라우저 테스트의 HTTP 전송 어댑터는 PostgREST 규약을 흉내 내지만, 인증·저장 로직과 SQL은 실제 앱/DB 코드를 사용합니다. 실제 Supabase PostgREST 및 Vercel 예약 실행은 배포 후 추가 확인이 필요합니다.
+
+DB 통합 테스트는 **스키마를 삭제합니다**. 테스트 전용 DB에서만 `DATABASE_URL`과 `ALLOW_DATABASE_RESET=1`을 설정하고 `npm run test:db`를 실행합니다. 운영 DB URL을 사용하지 않습니다.
+
+`npm run preview:build`는 별도의 HTML 체험 파일을 재생성합니다. 과거 `ui-preview-v*.html`은 이전 작업 보존용이며 운영 앱은 `/app`, `/lib`, `/components`입니다.

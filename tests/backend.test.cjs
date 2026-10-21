@@ -1,0 +1,97 @@
+const {test}=require('node:test');
+const assert=require('node:assert/strict');
+const ready=Promise.all([import('../lib/backend/service.ts'),import('../lib/backend/security.ts'),import('../lib/backend/supabase.ts'),import('../lib/roster.ts'),import('../lib/domain.ts')]);
+async function fixture(){
+ const [{createBackend},{ApiError,digest,verifyPin},{supabaseRpc},{ROSTER},{weekdays}]=await ready;
+ const users=new Map(),sessions=new Map(),buckets=new Map();let now='2026-10-21T12:00:00+09:00',version=0,state={choices:{},days:{},events:[]};
+ const copy=x=>structuredClone(x),dates=weekdays('2026-10-22','2026-11-03');
+ const auth=hash=>{const s=sessions.get(hash);if(!s||new Date(s.expires)<=new Date(now))throw new ApiError(401,'AUTH','로그인이 필요합니다.');return users.get(s.id);};
+ const rpc=async(name,a)=>{
+  switch(name){
+   case 'lunch_rate_limit':{const n=(buckets.get(a.p_key)||0)+1;buckets.set(a.p_key,n);return n<=a.p_limit;}
+   case 'lunch_identity':{try{return copy(auth(a.p_token_hash).person);}catch{return null;}}
+   case 'lunch_register':{const p=ROSTER.find(p=>p.name===a.p_name);if(!p)throw new ApiError(400,'ROSTER','명단 밖');if(users.has(p.id))throw new ApiError(409,'DUPLICATE','이미 등록');users.set(p.id,{person:copy(p),pin_hash:a.p_pin_hash});sessions.set(a.p_token_hash,{id:p.id,expires:new Date(new Date(now).getTime()+21*86400000).toISOString()});return copy(p);}
+   case 'lunch_credentials':{const u=[...users.values()].find(u=>u.person.name===a.p_name);return u?{id:u.person.id,pin_hash:u.pin_hash,user:copy(u.person)}:null;}
+   case 'lunch_open_session':{const u=users.get(a.p_user_id);if(u.pin_hash!==a.p_expected_hash)throw new ApiError(401,'STALE','PIN changed');sessions.set(a.p_token_hash,{id:u.person.id,expires:new Date(new Date(now).getTime()+21*86400000).toISOString()});return copy(u.person);}
+   case 'lunch_end_session':sessions.delete(a.p_token_hash);return true;
+   case 'lunch_change_pin':{const u=auth(a.p_token_hash);if(u.pin_hash!==a.p_expected_hash)throw new ApiError(401,'STALE','PIN changed');u.pin_hash=a.p_new_hash;for(const [key,s]of sessions)if(s.id===u.person.id)sessions.delete(key);return true;}
+   case 'lunch_snapshot':return {version,state:copy(state),user:a.p_cron?null:copy(auth(a.p_token_hash).person),people:copy(ROSTER),dates,now};
+   case 'lunch_commit_state':{
+    if(!a.p_cron)auth(a.p_token_hash);if(a.p_expected_version!==version)return false;
+    for(const date of a.p_write_dates)if(new Date(now)>=new Date(`${date}T11:00:00+09:00`))throw new ApiError(409,'CLOSED','오전 11시 마감');
+    for(const [date,day]of Object.entries(state.days))if(day.phase==='final'&&JSON.stringify(a.p_data.days[date])!==JSON.stringify(day))throw new ApiError(409,'FINAL','확정 기록');
+    state=copy(a.p_data);version++;return true;
+   }
+   case 'lunch_cleanup':for(const [key,s]of sessions)if(new Date(s.expires)<=new Date(now))sessions.delete(key);return true;
+   case 'lunch_health':return true;
+   default:throw new Error('Unexpected RPC '+name);
+  }
+ };
+ const options={rpc,inviteCode:'test-invitation',cronSecret:'test-cron-secret',secureCookies:true,retryDelay:async()=>{}};
+ const backend=createBackend(options);
+ const request=(path,body,cookie='',headers={})=>new Request('https://lunch.test/api/'+path,{method:body===undefined?'GET':'POST',headers:{origin:'https://lunch.test','content-type':'application/json',...(cookie?{cookie}:{}),...headers},...(body===undefined?{}:{body:JSON.stringify(body)})});
+ const send=(endpoint,body,cookie='',headers={})=>backend.handle(endpoint,request(endpoint,body,cookie,headers));
+ async function register(person=ROSTER[0]){const r=await send('auth',{action:'register',name:person.name,pin:'123456',invite:options.inviteCode});assert.equal(r.status,200,await r.clone().text());return r.headers.get('set-cookie').split(';')[0];}
+ return {send,register,ROSTER,users,sessions,buckets,digest,verifyPin,request,ApiError,supabaseRpc,createBackend,options,rpc,getState:()=>copy(state),setNow:s=>{now=s;}};
+}
+
+test('registration binds roster identity, hashes PIN and stores only a hashed secure cookie token',async()=>{
+ const f=await fixture();const cookie=await f.register();const [stored]=f.users.values();assert.notEqual(stored.pin_hash,'123456');assert.ok(await f.verifyPin('123456',stored.pin_hash));
+ assert.ok(f.sessions.has(f.digest(cookie.split('=')[1])));assert.ok(!f.sessions.has(cookie.split('=')[1]));
+ const login=await f.send('auth',{action:'login',name:f.ROSTER[0].name,pin:'123456'});assert.equal(login.status,200);assert.match(login.headers.get('set-cookie'),/HttpOnly; SameSite=Lax; Max-Age=1814400; Secure/);assert.equal(login.headers.get('cache-control'),'no-store, private');
+ const repeated=await f.send('auth',{action:'register',name:f.ROSTER[0].name,pin:'123456',invite:'test-invitation'});assert.equal(repeated.status,409);
+});
+test('unknown names, spoofed affiliation, bad invitation and malformed PIN are rejected',async()=>{
+ const f=await fixture();for(const [body,status]of [[{name:'홍길동'},400],[{className:'5반'},400],[{invite:'bad'},403],[{pin:123456},400]]){const r=await f.send('auth',{action:'register',name:f.ROSTER[0].name,pin:'123456',invite:'test-invitation',...body});assert.equal(r.status,status);}
+ assert.equal(f.users.size,0);
+});
+test('bad PIN, expired sessions, logout and PIN change revoke authentication',async()=>{
+ const f=await fixture();const first=await f.register();const bad=await f.send('auth',{action:'login',name:f.ROSTER[0].name,pin:'000000'});assert.equal(bad.status,401);
+ const login=await f.send('auth',{action:'login',name:f.ROSTER[0].name,pin:'123456'});const second=login.headers.get('set-cookie').split(';')[0];
+ const change=await f.send('profile',{currentPin:'123456',newPin:'654321'},first);assert.equal(change.status,200);assert.match(change.headers.get('set-cookie'),/Max-Age=0/);
+ for(const cookie of [first,second])assert.equal((await f.send('state',undefined,cookie)).status,401);
+ const newer=await f.send('auth',{action:'login',name:f.ROSTER[0].name,pin:'654321'});assert.equal(newer.status,200);const cookie=newer.headers.get('set-cookie').split(';')[0];
+ f.setNow('2026-12-01T12:00:00+09:00');assert.equal((await f.send('state',undefined,cookie)).status,401);
+ assert.equal((await f.send('auth',{action:'logout'},cookie)).status,200);
+});
+test('same-office registration works for all 20; simultaneous choices are not lost',async()=>{
+ const f=await fixture();const cookies=await Promise.all(f.ROSTER.map(p=>f.register(p)));
+ const responses=await Promise.all(cookies.map(cookie=>f.send('state',{dates:['2026-10-22'],choice:{status:'join',meal:'any'},userId:f.ROSTER[0].id},cookie)));
+ assert.ok(responses.every(r=>r.status===200));assert.equal(Object.values(f.getState().choices['2026-10-22']).filter(c=>c.status==='join').length,20);
+});
+test('December defaults and cancellations, bulk atomicity, weekend and outside dates',async()=>{
+ const f=await fixture();const hire=f.ROSTER.at(-1),cookie=await f.register(hire);
+ const data=await (await f.send('state',undefined,cookie)).json();assert.ok(data.dates.every(d=>data.state.choices[d][hire.id].status==='absent'));
+ for(const status of ['join','unset'])assert.equal((await f.send('state',{dates:['2026-11-02','2026-11-03'],choice:{status,meal:'any'}},cookie)).status,200);
+ assert.equal(f.getState().choices['2026-11-03'][hire.id].status,'absent');
+ const before=f.getState();for(const date of ['2026-10-24','2026-11-04'])assert.equal((await f.send('state',{dates:['2026-11-02',date],choice:{status:'join',meal:'any'}},cookie)).status,400);assert.deepEqual(f.getState(),before);
+});
+test('cutoff, repeated cron, late cancellation and immutable final snapshots',async()=>{
+ const f=await fixture();const cookie=await f.register();await f.send('state',{dates:['2026-10-22'],choice:{status:'join',meal:'any'}},cookie);
+ const cron=()=>f.send('cron',undefined,'',{authorization:'Bearer test-cron-secret'});
+ assert.equal((await f.send('cron')).status,401);f.setNow('2026-10-21T22:00:00+09:00');assert.equal((await cron()).status,200);const groups=f.getState().days['2026-10-22'].groups;await cron();assert.deepEqual(f.getState().days['2026-10-22'].groups,groups);
+ f.setNow('2026-10-22T11:00:00+09:00');await cron();const before=f.getState();assert.equal(before.days['2026-10-22'].phase,'final');
+ assert.equal((await f.send('state',{dates:['2026-10-22','2026-10-23'],choice:{status:'absent',meal:'any'}},cookie)).status,409);assert.deepEqual(f.getState(),before);
+});
+test('cross-origin, invalid content, oversized body and unauthenticated writes fail safely',async()=>{
+ const f=await fixture();const cookie=await f.register();
+ assert.equal((await f.send('state',{dates:['2026-10-22'],choice:{status:'join',meal:'any'}},cookie,{origin:'https://evil.test'})).status,403);
+ assert.equal((await f.send('state',{},cookie,{'content-type':'text/plain'})).status,415);
+ assert.equal((await f.send('state',{payload:'x'.repeat(9000)},cookie)).status,413);
+ assert.equal((await f.send('state',{})).status,401);
+ const malformed=new Request('https://lunch.test/api/state',{method:'POST',headers:{origin:'https://lunch.test','content-type':'application/json',cookie},body:'{'});assert.equal((await f.createBackend(f.options).handle('state',malformed)).status,400);
+});
+test('account throttling returns 429 while shared IP permits different users',async()=>{
+ const f=await fixture();await f.register();let last;for(let i=0;i<8;i++)last=await f.send('auth',{action:'login',name:f.ROSTER[0].name,pin:'000000'});assert.equal(last.status,429);
+ assert.ok(await f.register(f.ROSTER[1]));
+});
+test('bounded CAS retry reports conflict instead of claiming a failed save succeeded',async()=>{
+ const f=await fixture();const cookie=await f.register();let attempts=0;const backend=f.createBackend({...f.options,rpc:async(n,a)=>n==='lunch_commit_state'?(attempts++,false):f.rpc(n,a)});
+ const r=await backend.handle('state',f.request('state',{dates:['2026-10-22'],choice:{status:'join',meal:'any'}},cookie));assert.equal(r.status,409);assert.equal(attempts,24);assert.equal((await r.json()).code,'BUSY');
+});
+test('Supabase gateway returns safe errors and does not reveal credentials or raw DB messages',async()=>{
+ const f=await fixture();const rpc=f.supabaseRpc('https://project.supabase.co','do-not-leak',async()=>Response.json({code:'42P01',message:'private table password'},{status:400}));
+ await assert.rejects(rpc('lunch_health',{}),e=>e.status===503&&!e.message.includes('private'));
+ const conflict=f.supabaseRpc('https://project.supabase.co','secret',async()=>Response.json({code:'LN409',message:'마감'},{status:400}));await assert.rejects(conflict('lunch_commit_state',{}),e=>e.status===409);
+ const unavailable=f.createBackend({...f.options,rpc:async()=>{throw new Error('password secret detail');}});const r=await unavailable.handle('health',f.request('health'));assert.equal(r.status,500);assert.ok(!(await r.text()).includes('secret'));
+});

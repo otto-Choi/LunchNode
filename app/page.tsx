@@ -1,3 +1,4 @@
 import LunchApp from '@/components/lunch-app';
-import { configured } from '@/lib/server';
-export default function Page(){return <LunchApp demoMode={!configured()}/>;}
+import { isDemoMode } from '@/lib/server';
+export const dynamic='force-dynamic';
+export default function Page(){return <LunchApp demoMode={isDemoMode()}/>;}

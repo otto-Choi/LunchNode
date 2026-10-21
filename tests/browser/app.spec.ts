@@ -1,0 +1,21 @@
+import {test,expect} from '@playwright/test';
+test('register, change attendance and menu, reload, and log out',async({page},info)=>{
+ const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
+ await page.goto('/');await page.getByRole('button',{name:'처음이라면 최초 등록'}).click();
+ await page.getByLabel('이름',{exact:true}).selectOption(info.project.name==='mobile'?'김서영':'권도영');
+ await page.getByLabel('초대 코드').fill('ci-invitation');await page.getByLabel('숫자 6자리 PIN').fill('123456');
+ const loaded=page.waitForResponse(r=>r.url().endsWith('/api/state')&&r.status()===200);
+ await page.getByRole('button',{name:'등록',exact:true}).click();const payload=await (await loaded).json();
+ await expect(page.getByRole('heading',{name:'내 점심 일정',exact:true})).toBeVisible();
+ const future=payload.dates.find((d:string)=>new Date(payload.now)<new Date(`${d}T11:00:00+09:00`));
+ const short=`${Number(future.slice(5,7))}월 ${Number(future.slice(8))}일`;
+ const write=()=>page.waitForResponse(r=>r.url().endsWith('/api/state')&&r.request().method()==='POST');
+ let pending=write();await page.getByRole('button',{name:`${short} 참석`,exact:true}).click();expect((await pending).status()).toBe(200);
+ await expect(page.locator('.date-cell.selected .status-label')).toHaveText('참석');
+ await page.getByRole('button',{name:'외부 식사',exact:true}).click();pending=write();await page.getByRole('button',{name:'저장',exact:true}).click();expect((await pending).status()).toBe(200);
+ await page.reload();await expect(page.locator('.date-cell.selected .date-meal')).toHaveText('외부 식사');
+ pending=write();await page.getByRole('button',{name:`${short} 불참`,exact:true}).click();expect((await pending).status()).toBe(200);await expect(page.locator('.date-cell.selected .status-label')).toHaveText('불참');
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
+ await page.locator('.profile-button').click();await page.getByRole('button',{name:'로그아웃',exact:true}).click();await expect(page.getByRole('heading',{name:'로그인',exact:true})).toBeVisible();
+ expect(errors).toEqual([]);
+});

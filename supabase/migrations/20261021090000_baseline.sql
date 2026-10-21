@@ -1,7 +1,5 @@
--- Existing installations only. For a new DB, apply ../schema.sql instead.
--- Transactional: stop without deleting anything if accounts outside the roster exist.
+-- Baseline for fresh and existing databases. Never deletes participant data.
 begin;
-lock table public.lunch_users, public.lunch_state in exclusive mode;
 -- Fixed roster: 8 in class 4, 9 in class 5, 3 December hires.
 create table if not exists public.lunch_roster (
  id uuid primary key,
@@ -31,13 +29,16 @@ create table if not exists public.lunch_roster (
     (name='박진영' and class_name='12월 입사자' and default_status='absent')
  )
 );
-do $$ begin
- if exists(select 1 from public.lunch_users where name not in ('권도영','김서영','손규영','김민국','김상규','안소이','유태상','최철원','김주연','박서연','박진홍','양우진','장은영','김영탁','부유경','서유빈','오성현','김범준','박대원','박진영')) then
-   raise exception 'Existing accounts outside the approved roster: review before applying this migration';
- end if;
-end; $$;
+
+create table if not exists public.lunch_users (
+ id uuid primary key, name text not null unique,
+ class_name text not null default '', pin_hash text not null,
+ created_at timestamptz not null default now()
+);
+-- Existing pre-roster installations keep their account UUIDs.
 insert into public.lunch_roster(id,name,class_name,default_status)
-select coalesce(u.id,seed.id),seed.name,seed.class_name,seed.default_status from (values
+select coalesce(u.id,seed.id),seed.name,seed.class_name,seed.default_status
+from (values
 ('00000000-0000-4000-8000-000000000001'::uuid,'권도영','4반','unset'),
 ('00000000-0000-4000-8000-000000000002'::uuid,'김서영','4반','unset'),
 ('00000000-0000-4000-8000-000000000003'::uuid,'손규영','4반','unset'),
@@ -59,34 +60,20 @@ select coalesce(u.id,seed.id),seed.name,seed.class_name,seed.default_status from
 ('00000000-0000-4000-8000-000000000019'::uuid,'박대원','12월 입사자','absent'),
 ('00000000-0000-4000-8000-000000000020'::uuid,'박진영','12월 입사자','absent')) as seed(id,name,class_name,default_status)
 left join public.lunch_users u on u.name=seed.name
-on conflict(name) do update set class_name=excluded.class_name, default_status=excluded.default_status;
-update public.lunch_users u set class_name=r.class_name from public.lunch_roster r where u.id=r.id;
-do $$ begin
- if not exists(select 1 from pg_constraint where conname='lunch_users_roster_id') then
-   alter table public.lunch_users add constraint lunch_users_roster_id foreign key(id) references public.lunch_roster(id);
- end if;
- if not exists(select 1 from pg_constraint where conname='lunch_users_roster_name') then
-   alter table public.lunch_users add constraint lunch_users_roster_name foreign key(name) references public.lunch_roster(name);
- end if;
-end; $$;
-alter table public.lunch_roster enable row level security;
-revoke all on public.lunch_roster from public, anon, authenticated, service_role;
-grant select on public.lunch_roster to service_role;
-
--- Account identity and affiliation always come from the fixed roster.
-create or replace function public.lunch_check_identity()
-returns trigger language plpgsql security definer set search_path=public as $$
-declare person public.lunch_roster%rowtype;
-begin
- select * into person from public.lunch_roster where id=new.id and name=new.name;
- if not found then raise exception 'Only the 20 listed participants may register'; end if;
- new.class_name := person.class_name;
- return new;
-end;
-$$;
-revoke all on function public.lunch_check_identity() from public, anon, authenticated;
-drop trigger if exists lunch_identity on public.lunch_users;
-create trigger lunch_identity before insert or update on public.lunch_users
-for each row execute function public.lunch_check_identity();
-
+on conflict(name) do nothing;
+create table if not exists public.lunch_sessions (
+ token_hash text primary key,user_id uuid not null references public.lunch_users(id) on delete cascade,expires_at timestamptz not null
+);
+create index if not exists lunch_sessions_user on public.lunch_sessions(user_id);
+create table if not exists public.lunch_state (
+ id integer primary key check(id=1),version integer not null default 0,
+ data jsonb not null default '{"choices":{},"days":{},"events":[]}'::jsonb
+);
+insert into public.lunch_state(id) values(1) on conflict(id) do nothing;
+create table if not exists public.lunch_auth_buckets(key text primary key,attempts integer not null,window_start timestamptz not null);
+alter table public.lunch_users enable row level security;
+alter table public.lunch_sessions enable row level security;
+alter table public.lunch_state enable row level security;
+alter table public.lunch_auth_buckets enable row level security;
+grant usage on schema public to anon,authenticated,service_role;
 commit;
