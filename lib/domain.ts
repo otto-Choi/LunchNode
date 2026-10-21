@@ -37,51 +37,110 @@ function sizes(n:number):number[] {
 export function encounters(state:State, date:string, a:string, b:string) {
   return Object.entries(state.days).filter(([d,v])=>d<date&&v.phase==='final').reduce((n,[,v])=>n+Number(v.groups.some(g=>g.members.some(p=>p.id===a)&&g.members.some(p=>p.id===b))),0);
 }
-function repeatCost(state:State,date:string,people:Person[]) {let score=0;for(let i=0;i<people.length;i++)for(let j=i+1;j<people.length;j++)score+=encounters(state,date,people[i].id,people[j].id);return score;}
+// Lexicographic cost: avoid tiny groups, then the most recent repeat encounters,
+// then cumulative repeats, soft preferences, and five-person groups. BigInt keeps
+// every historical date significant without floating-point weight loss.
+function matchingCosts(state:State,date:string,people:Person[]) {
+  const history=Object.entries(state.days).filter(([d,v])=>d<date&&v.phase==='final').sort(([a],[b])=>a.localeCompare(b));
+  const index=new Map(people.map((p,i)=>[p.id,i]));
+  const counts=people.map(()=>people.map(()=>0));
+  const latest=people.map(()=>people.map(()=>-1));
+  history.forEach(([,day],dayIndex)=>{for(const group of day.groups)for(let i=0;i<group.members.length;i++)for(let j=i+1;j<group.members.length;j++){
+    const a=index.get(group.members[i].id),b=index.get(group.members[j].id);if(a===undefined||b===undefined)continue;
+    counts[a][b]++;counts[b][a]++;latest[a][b]=latest[b][a]=dayIndex;
+  }});
+  // A group plan has at most n*(n-1)/2 pairs. Each recency digit therefore cannot carry.
+  const base=BigInt(Math.max(2,people.length*people.length+1));
+  const fiveUnit=1n,preferenceUnit=BigInt(people.length+1);
+  const frequencyUnit=preferenceUnit*BigInt(people.length+1);
+  const recencyUnit=frequencyUnit*BigInt(history.length*people.length*people.length+1);
+  const pairs=people.map((_,i)=>people.map((__,j)=>latest[i][j]<0?0n:recencyUnit*base**BigInt(latest[i][j])+BigInt(counts[i][j])*frequencyUnit));
+  const smallUnit=recencyUnit*base**BigInt(history.length+1);
+  return {pairs,index,smallUnit,preferenceUnit,fiveUnit};
+}
 export function initialMatch(state:State,date:string,people:Person[],random=Math.random):Group[] {
-  const choice=state.choices[date]??{};
-  const joined=people.filter(p=>choice[p.id]?.status==='join');
-  const box=joined.filter(p=>choice[p.id].meal==='lunchbox');
-  const out=joined.filter(p=>choice[p.id].meal==='outside');
-  const preferBox=joined.filter(p=>choice[p.id].meal==='prefer_lunchbox');
-  const neutral=joined.filter(p=>choice[p.id].meal==='any');
-  const preferOut=joined.filter(p=>choice[p.id].meal==='prefer_outside');
-  const flexibleCount=preferBox.length+neutral.length+preferOut.length;
-  let best:Group[]=[];let bestCost:number[]|undefined;
-  for(let attempt=0;attempt<160;attempt++) {
-    // For each pool size, this ordering satisfies the most soft preferences.
-    // Shuffle within each tier so equally good plans can still avoid repeat pairings.
-    const flexible=[...shuffle(preferBox,random),...shuffle(neutral,random),...shuffle(preferOut,random)];
-    const split=attempt%(flexibleCount+1);
-    const pool={lunchbox:[...box,...flexible.slice(0,split)],outside:[...out,...flexible.slice(split)]};
-    const groups:Group[]=[];
-    for(const meal of ['lunchbox','outside'] as const){
-      const members=shuffle(pool[meal],random);let offset=0;
-      for(const size of sizes(members.length)){groups.push({id:`${date}-${groups.length+1}`,meal,members:members.slice(offset,offset+size)});offset+=size;}
+  const choices=state.choices[date]??{};
+  const joined=shuffle(people.filter(p=>choices[p.id]?.status==='join'),random);
+  if(!joined.length)return [];
+  const weights=matchingCosts(state,date,joined);
+  const evaluate=(members:Person[],meal:MealType)=>{
+    let cost=BigInt(Math.max(0,3-members.length))*weights.smallUnit+(members.length===5?weights.fiveUnit:0n);
+    for(let i=0;i<members.length;i++){
+      cost+=BigInt(preferenceCost(choices[members[i].id].meal,meal))*weights.preferenceUnit;
+      for(let j=i+1;j<members.length;j++)cost+=weights.pairs[weights.index.get(members[i].id)!][weights.index.get(members[j].id)!];
     }
-    // Strict choices are enforced by construction. Then minimize small groups,
-    // soft-preference mismatches, five-person groups, repeat pairs, and imbalance.
-    const cost=[
-      groups.reduce((n,g)=>n+Math.max(0,3-g.members.length),0),
-      groups.reduce((n,g)=>n+g.members.reduce((sum,p)=>sum+preferenceCost(choice[p.id].meal,g.meal),0),0),
-      groups.filter(g=>g.members.length===5).length,
-      groups.reduce((n,g)=>n+repeatCost(state,date,g.members),0),
-      Math.abs(pool.lunchbox.length-pool.outside.length),
-    ];
-    if(!bestCost||compareCost(cost,bestCost)<0){best=groups;bestCost=cost;}
+    return cost;
+  };
+  const build=(pool:Record<MealType,Person[]>)=>{
+    const groups:Group[]=[];
+    for(const meal of ['lunchbox','outside'] as const){let offset=0;const members=shuffle(pool[meal],random);
+      for(const size of sizes(members.length)){groups.push({id:'',meal,members:members.slice(offset,offset+size)});offset+=size;}}
+    return groups;
+  };
+  const strictBox=joined.filter(p=>choices[p.id].meal==='lunchbox'),strictOut=joined.filter(p=>choices[p.id].meal==='outside');
+  const flexible=joined.filter(p=>!['lunchbox','outside'].includes(choices[p.id].meal));
+  let best:Group[]=[],bestCost:bigint|undefined;
+  // Seed the bounded exact-cover search with complete valid assignments.
+  for(let attempt=0;attempt<160;attempt++){
+    const ordered=attempt%2===0?[
+      ...shuffle(flexible.filter(p=>choices[p.id].meal==='prefer_lunchbox'),random),
+      ...shuffle(flexible.filter(p=>choices[p.id].meal==='any'),random),
+      ...shuffle(flexible.filter(p=>choices[p.id].meal==='prefer_outside'),random),
+    ]:shuffle(flexible,random);
+    const split=Math.floor(attempt/2)%(flexible.length+1);
+    const groups=build({lunchbox:[...strictBox,...ordered.slice(0,split)],outside:[...strictOut,...ordered.slice(split)]});
+    const cost=groups.reduce((n,g)=>n+evaluate(g.members,g.meal),0n);
+    if(bestCost===undefined||cost<bestCost){best=groups;bestCost=cost;}
+    if(bestCost===0n)break;
   }
-  return best;
+  // Fixed roster is 20 people. Enumerate all legal groups, then search combinations
+  // with memoization and branch-and-bound. Work budgets keep concurrent API calls bounded.
+  if(bestCost!==0n){
+    type Candidate={mask:number;group:Group;cost:bigint};
+    const byPerson:Candidate[][]=joined.map(()=>[]);
+    function enumerate(indices:number[],start:number,mask:number,box:boolean,out:boolean){
+      if(indices.length){
+        const members=indices.map(i=>joined[i]);let meal:MealType=box?'lunchbox':'outside';
+        if(box&&out){const a=evaluate(members,'lunchbox'),b=evaluate(members,'outside');meal=a<b?'lunchbox':a>b?'outside':random()<.5?'lunchbox':'outside';}
+        const candidate={mask,group:{id:'',meal,members},cost:evaluate(members,meal)};
+        for(const i of indices)byPerson[i].push(candidate);
+      }
+      if(indices.length===5)return;
+      for(let i=start;i<joined.length;i++){
+        const nextBox=box&&allowsMeal(choices[joined[i].id].meal,'lunchbox');
+        const nextOut=out&&allowsMeal(choices[joined[i].id].meal,'outside');
+        if(nextBox||nextOut)enumerate([...indices,i],i+1,mask|(1<<i),nextBox,nextOut);
+      }
+    }
+    enumerate([],0,0,true,true);
+    for(const list of byPerson)list.sort((a,b)=>a.cost<b.cost?-1:a.cost>b.cost?1:0);
+    const memo=new Map<number,bigint>();let nodes=0,checks=0;
+    function search(remaining:number,cost:bigint,groups:Group[]){
+      if(cost>=bestCost!||nodes++>=20000||checks>=500000)return;
+      if(!remaining){best=groups;bestCost=cost;return;}
+      const previous=memo.get(remaining);if(previous!==undefined&&previous<=cost)return;memo.set(remaining,cost);
+      const pivot=31-Math.clz32(remaining&-remaining);
+      for(const candidate of byPerson[pivot]){
+        if(++checks>500000||bestCost===0n)break;
+        if(cost+candidate.cost>=bestCost!)break;
+        if((candidate.mask&remaining)!==candidate.mask)continue;
+        search(remaining^candidate.mask,cost+candidate.cost,[...groups,candidate.group]);
+      }
+    }
+    search((1<<joined.length)-1,0n,[]);
+  }
+  return best.map((g,i)=>({...g,id:`${date}-${i+1}`}));
 }
 export function addMember(state:State,date:string,person:Person,meal:Meal,random=Math.random) {
   const day=state.days[date];if(day.groups.some(g=>g.members.some(p=>p.id===person.id)))return;
+  const people=[person,...day.groups.flatMap(g=>g.members)];
+  const weights=matchingCosts(state,date,people);
   const candidates=shuffle(day.groups.filter(g=>g.members.length<5&&allowsMeal(meal,g.meal)),random);
-  const cost=(g:Group)=>[
-    g.members.length<3?0:1,
-    preferenceCost(meal,g.meal),
-    g.members.length,
-    -g.members.reduce((n,p)=>n+encounters(state,date,p.id,person.id),0),
-  ];
-  candidates.sort((a,b)=>compareCost(cost(a),cost(b)));
+  const cost=(g:Group)=>g.members.reduce((n,p)=>n+weights.pairs[0][weights.index.get(p.id)!],0n);
+  candidates.sort((a,b)=>{
+    const ca=cost(a),cb=cost(b);if(ca!==cb)return ca<cb?-1:1;
+    return compareCost([a.members.length<3?0:1,preferenceCost(meal,a.meal),a.members.length],[b.members.length<3?0:1,preferenceCost(meal,b.meal),b.members.length]);
+  });
   if(candidates[0])candidates[0].members.push({...person});
   else {
     const total=(actual:MealType)=>day.groups.filter(g=>g.meal===actual).reduce((n,g)=>n+g.members.length,0);

@@ -1,7 +1,7 @@
 import {test,expect} from '@playwright/test';
 test('register, change attendance and menu, reload, and log out',async({page},info)=>{
  const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
- await page.goto('/');await page.getByRole('button',{name:'처음이라면 최초 등록'}).click();
+ await page.goto('/');await expect(page).toHaveTitle('런치노드 · 점심 신청 및 조 편성');await expect(page.locator('.brand')).toContainText('런치노드');await expect(page.locator('.brand img')).toHaveAttribute('src','/lunchnode.svg');const icon=await page.request.get('/icon.svg');expect(icon.ok()).toBe(true);expect(await icon.text()).toContain('<circle');await page.getByRole('button',{name:'처음이라면 최초 등록'}).click();
  await page.getByLabel('이름',{exact:true}).selectOption(info.project.name==='mobile'?'김서영':'권도영');
  await page.getByLabel('초대 코드').fill('ci-invitation');await page.getByLabel('숫자 6자리 PIN').fill('123456');
  const loaded=page.waitForResponse(r=>r.url().endsWith('/api/state')&&r.status()===200);
@@ -56,10 +56,10 @@ test('register, change attendance and menu, reload, and log out',async({page},in
  for(const d of openDates.slice(0,2))expect(saved.state.choices[d][payload.user.id].status).toBe('absent');
  expect(saved.state.choices[openDates[2]][payload.user.id]).toEqual(untouched);
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
- await page.getByRole('button',{name:'이용 안내',exact:false}).first().click();await expect(page.getByRole('dialog')).toContainText('이전에 덜 만난 조합');await expect(page.getByRole('dialog')).toContainText('상관없음은 양쪽 모두 배정');await page.getByRole('button',{name:'닫기',exact:true}).click();
+ await page.getByRole('button',{name:'이용 안내',exact:false}).first().click();await expect(page.getByRole('dialog')).toContainText('최근에 만난 사람과 다시 만나는 일을 가장 먼저 피합니다');await expect(page.getByRole('dialog')).toContainText('상관없음은 양쪽 모두 배정');await page.getByRole('button',{name:'닫기',exact:true}).click();
  await page.locator('.profile-button').click();await page.getByRole('button',{name:'운영자 도구',exact:true}).click();
  await page.getByLabel('운영자 키',{exact:true}).fill('ci-operator-secret-at-least-32-chars');const adminCheck=page.waitForResponse(r=>r.url().endsWith('/api/admin'));await page.getByRole('button',{name:'운영자 인증',exact:true}).click();expect((await adminCheck).status()).toBe(200);await expect(page.getByLabel('작업',{exact:true})).toBeVisible();
- await page.getByLabel('작업',{exact:true}).selectOption('recover');await page.getByRole('button',{name:'실행',exact:true}).click();await expect(page.getByRole('status')).toContainText('누락된 편성·마감 처리를 완료했습니다.');
+ await page.getByLabel('작업',{exact:true}).selectOption('recover');await page.getByRole('button',{name:'실행',exact:true}).click();await expect(page.getByRole('dialog').getByRole('status')).toContainText('누락된 편성·마감 처리를 완료했습니다.');
  await page.getByRole('button',{name:'닫기',exact:true}).click();
  await page.locator('.profile-button').click();await page.getByRole('button',{name:'로그아웃',exact:true}).click();await expect(page.getByRole('heading',{name:'로그인',exact:true})).toBeVisible();
  expect(errors).toEqual([]);
