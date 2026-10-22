@@ -16,6 +16,12 @@ export const mealNames: Record<Meal,string> = {lunchbox:'도시락만',prefer_lu
 export const groupMealNames: Record<MealType,string> = {lunchbox:'도시락',outside:'외식'};
 export function isMeal(value:unknown): value is Meal {return typeof value==='string' && (MEAL_OPTIONS as readonly string[]).includes(value);}
 export function preferredMeal(meal:Meal):MealType|undefined {return meal==='lunchbox'||meal==='prefer_lunchbox'?'lunchbox':meal==='outside'||meal==='prefer_outside'?'outside':undefined;}
+export function assignmentOverview(state:State,date:string,people:Person[]) {
+  // Always use all groups, not the UI's "my groups" filter.
+  const assigned=new Set((state.days[date]?.groups||[]).flatMap(g=>g.members.map(p=>p.id)));
+  const unassigned=people.filter(p=>!assigned.has(p.id)).map(person=>({person,choice:state.choices[date]?.[person.id]||defaultChoice(person)}));
+  return {assignedCount:people.length-unassigned.length,unassigned,unassignedJoined:unassigned.filter(row=>row.choice.status==='join').length};
+}
 export function allowsMeal(meal:Meal,actual:MealType) {return meal!=='lunchbox'&&meal!=='outside'||meal===actual;}
 function preferenceCost(meal:Meal,actual:MealType) {const preferred=preferredMeal(meal);return preferred&&preferred!==actual?1:0;}
 function compareCost(a:number[],b:number[]) {for(let i=0;i<a.length;i++){const difference=a[i]-b[i];if(difference)return difference;}return 0;}
@@ -131,6 +137,8 @@ export function initialMatch(state:State,date:string,people:Person[],random=Math
     }
     search((1<<joined.length)-1,0n,[]);
   }
+  const assigned=best.flatMap(g=>g.members.map(p=>p.id));
+  if(assigned.length!==joined.length||new Set(assigned).size!==joined.length||joined.some(p=>!assigned.includes(p.id)))throw new Error('참석자 배정 확인에 실패했습니다. 다시 시도해 주세요.');
   return best.map((g,i)=>({...g,id:`${date}-${i+1}`}));
 }
 export function addMember(state:State,date:string,person:Person,meal:Meal,random=Math.random) {

@@ -80,3 +80,13 @@ test('operator rematch requires date and confirmation, submits the selected day 
  await expect(submit).toBeDisabled();await page.getByRole('button',{name:'닫기',exact:true}).click();
  await page.getByRole('button',{name:'조 편성 결과',exact:true}).click();await expect(page.locator('.results-note')).toContainText('재편성했습니다');
 });
+
+test('group results display everyone outside groups with attendance and menu conditions',async({page})=>{
+ const people=[{id:'p1',name:'권도영',className:'4반'},{id:'p2',name:'김서영',className:'4반'},{id:'p3',name:'손규영',className:'4반'},{id:'p4',name:'김민국',className:'4반'},{id:'p5',name:'김상규',className:'4반'}];
+ const date='2026-10-22';const payload={demo:false,user:people[0],people,dates:[date],now:`${date}T10:00:00+09:00`,state:{choices:{[date]:{p1:{status:'join',meal:'lunchbox'},p2:{status:'join',meal:'outside'},p3:{status:'absent',meal:'prefer_lunchbox'},p4:{status:'unset',meal:'any'},p5:{status:'join',meal:'prefer_outside'}}},days:{[date]:{phase:'matched',matchedAt:'2026-10-21T22:00:00+09:00',groups:[{id:'a',meal:'lunchbox',members:[people[0]]},{id:'b',meal:'outside',members:[people[1]]}]}},events:[]}};
+ await page.route('**/api/state',route=>route.fulfill({json:payload}));await page.goto('/');await page.getByRole('button',{name:'조 편성 결과',exact:true}).click();
+ const section=page.getByRole('region',{name:'조 미포함 인원'});await expect(section).toContainText('전체 5명 · 조 배정 2명 · 조 미포함 3명');await expect(section.locator('li')).toHaveCount(3);
+ const row=(name:string)=>section.getByRole('listitem').filter({hasText:name});await expect(row('손규영')).toContainText('불참');await expect(row('손규영')).toContainText('도시락선호');await expect(row('김민국')).toContainText('미응답');await expect(row('김민국')).toContainText('상관없음');await expect(row('김상규')).toContainText('참석');await expect(row('김상규')).toContainText('외식선호');await expect(row('김상규')).toContainText('미배정');await expect(section.getByRole('alert')).toContainText('참석 신청자 1명');
+ await page.getByRole('checkbox',{name:'내가 포함된 조만 보기',exact:true}).check();await expect(page.locator('.group-card')).toHaveCount(1);await expect(section.locator('li')).toHaveCount(3);await expect(section).not.toContainText('김서영');
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
+});

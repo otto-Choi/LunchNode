@@ -1,0 +1,21 @@
+const {test}=require('node:test');const assert=require('node:assert/strict');
+const ready=Promise.all([import('../lib/domain.ts'),import('../lib/roster.ts')]);
+test('all roster members are accounted for and unassigned choices retain all attendance and meal conditions',async()=>{
+ const [d,{ROSTER}]=await ready;const state=d.emptyState(),date='2026-10-22';d.applyDefaults(state,[date],ROSTER);
+ state.choices[date][ROSTER[0].id]={status:'join',meal:'lunchbox'};state.choices[date][ROSTER[1].id]={status:'join',meal:'prefer_outside'};
+ state.choices[date][ROSTER[2].id]={status:'absent',meal:'prefer_lunchbox'};
+ state.days[date]={phase:'matched',matchedAt:'2026-10-21T22:00:00+09:00',groups:[{id:'a',meal:'lunchbox',members:[ROSTER[0]]}]};
+ const before=structuredClone(state),result=d.assignmentOverview(state,date,ROSTER);assert.equal(result.assignedCount,1);assert.equal(result.unassigned.length,19);assert.equal(result.unassignedJoined,1);
+ assert.ok(!result.unassigned.some(r=>r.person.id===ROSTER[0].id));assert.deepEqual(result.unassigned.find(r=>r.person.id===ROSTER[1].id).choice,{status:'join',meal:'prefer_outside'});
+ assert.deepEqual(result.unassigned.find(r=>r.person.id===ROSTER[2].id).choice,{status:'absent',meal:'prefer_lunchbox'});assert.equal(result.unassigned.at(-1).choice.status,'absent');assert.deepEqual(state,before);
+});
+test('overview uses the full set of groups and treats not-yet-matched attendees as unassigned',async()=>{
+ const [d,{ROSTER}]=await ready;const state=d.emptyState(),date='2026-10-22',people=ROSTER.slice(0,2);
+ for(const p of people)d.setChoice(state,date,p,{status:'join',meal:'any'},new Date('2026-10-21T12:00:00+09:00'));
+ assert.equal(d.assignmentOverview(state,date,people).unassignedJoined,2);d.syncDue(state,[date],people,new Date('2026-10-21T22:00:00+09:00'));
+ const result=d.assignmentOverview(state,date,people);assert.equal(result.assignedCount,2);assert.deepEqual(result.unassigned,[]);
+});
+test('missing saved choices use roster defaults rather than assuming every person attends',async()=>{
+ const [d,{ROSTER}]=await ready;const result=d.assignmentOverview(d.emptyState(),'2026-10-22',ROSTER);assert.equal(result.unassigned.length,20);assert.equal(result.unassignedJoined,0);
+ assert.deepEqual(result.unassigned[0].choice,{status:'unset',meal:'any'});assert.deepEqual(result.unassigned.at(-1).choice,{status:'absent',meal:'any'});
+});
