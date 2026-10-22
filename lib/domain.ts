@@ -6,17 +6,25 @@ export type Choice = { status: 'unset' | 'join' | 'absent'; meal: Meal };
 export type Person = { id: string; name: string; className: string; defaultStatus?: 'unset' | 'absent' };
 export type Group = { id: string; meal: MealType; members: Person[] };
 export type Day = { groups: Group[]; phase: 'matched'|'final'; matchedAt: string; finalizedAt?: string; rematchedAt?: string };
-export type State = { choices: Record<string, Record<string,Choice>>; days: Record<string,Day>; events: {date:string; userId:string; action:string; at:string}[] };
+export type ChoiceOrigin = 'selected'|'default';
+export type State = { choiceOrigins?:Record<string,Record<string,ChoiceOrigin>>; choices: Record<string, Record<string,Choice>>; days: Record<string,Day>; events: {date:string; userId:string; action:string; at:string}[] };
 export const emptyState = (): State => ({choices:{},days:{},events:[]});
 export function defaultChoice(person: Pick<Person,'defaultStatus'>): Choice { return {status:person.defaultStatus||'unset',meal:'any'}; }
 export function applyDefaults(state:State,dates:string[],people:Person[]) {
-  for(const date of dates){const choices=state.choices[date]??={};for(const person of people)if(!choices[person.id])choices[person.id]=defaultChoice(person);}
+  for(const date of dates){const choices=state.choices[date]??={};for(const person of people)if(!choices[person.id]){choices[person.id]=defaultChoice(person);((state.choiceOrigins??={})[date]??={})[person.id]='default';}}
 }
 // Keep the legacy lunchbox/outside keys as strict choices; existing saved requests need no conversion.
 export const mealNames: Record<Meal,string> = {lunchbox:'도시락만',prefer_lunchbox:'도시락선호',any:'상관없음',prefer_outside:'외식선호',outside:'외식만'};
 export const groupMealNames: Record<MealType,string> = {lunchbox:'도시락',outside:'외식'};
 export function isMeal(value:unknown): value is Meal {return typeof value==='string' && (MEAL_OPTIONS as readonly string[]).includes(value);}
 export function preferredMeal(meal:Meal):MealType|undefined {return meal==='lunchbox'||meal==='prefer_lunchbox'?'lunchbox':meal==='outside'||meal==='prefer_outside'?'outside':undefined;}
+export function attendanceLabel(person:Person,choice:Choice,origin?:ChoiceOrigin) {
+  if(choice.status==='join')return '참석';
+  if(choice.status==='unset')return '미선택';
+  if(origin==='selected'||person.defaultStatus!=='absent')return '불참 선택';
+  if(origin==='default')return '기본 불참';
+  return '불참 · 선택 여부 미확인';
+}
 export function assignmentOverview(state:State,date:string,people:Person[]) {
   // Always use all groups, not the UI's "my groups" filter.
   const assigned=new Set((state.days[date]?.groups||[]).flatMap(g=>g.members.map(p=>p.id)));
@@ -194,7 +202,10 @@ export function syncDue(state:State,dates:string[],people:Person[],now=new Date(
 }
 export function setChoice(state:State,date:string,person:Person,choice:Choice,now=new Date(),policy?:MatchingPolicy) {
   if(now>=cutoff(date))throw new Error('오전 11시 마감 이후에는 변경할 수 없습니다.');
+  const origin:ChoiceOrigin=choice.status==='unset'?'default':'selected';
   if(choice.status==='unset')choice=defaultChoice(person);
+  if(state.days[date]?.phase==='final')throw new Error('이미 확정된 날짜입니다.');
+  ((state.choiceOrigins??={})[date]??={})[person.id]=origin;
   const previous=state.choices[date]?.[person.id];
   if(state.days[date]){
     const day=state.days[date];if(day.phase==='final')throw new Error('이미 확정된 날짜입니다.');

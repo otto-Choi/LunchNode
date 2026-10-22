@@ -179,3 +179,10 @@ test('tonight cron uses operational balancing without publishing demographic inp
  const state=await (await f.send('state',undefined,cookies[0])).json();assert.equal(state.state.days[date].groups.length,2);const females=new Set(['김서영','손규영','안소이','김주연']);for(const group of state.state.days[date].groups){assert.equal(group.members.length,4);assert.equal(group.members.filter(p=>females.has(p.name)).length,2);}
  assert.ok(!JSON.stringify(state).includes('genderByName'));for(const person of state.people)assert.ok(!('gender' in person));
 });
+
+test('absence origin survives API reload and cannot be forged by incoming request metadata',async()=>{
+ const f=await fixture(),person=f.ROSTER.at(-1),cookie=await f.register(person),date='2026-10-23';
+ let saved=await (await f.send('state',undefined,cookie)).json();assert.equal(saved.state.choiceOrigins[date][person.id],'default');
+ const result=await f.send('state',{dates:[date],choice:{status:'absent',meal:'prefer_outside',origin:'default'},choiceOrigins:{[date]:{[person.id]:'default'}}},cookie);assert.equal(result.status,200);
+ saved=await (await f.send('state',undefined,cookie)).json();assert.equal(saved.state.choiceOrigins[date][person.id],'selected');assert.deepEqual(saved.state.choices[date][person.id],{status:'absent',meal:'prefer_outside'});
+});

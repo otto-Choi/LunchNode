@@ -36,3 +36,17 @@ test('repeating the same attendance choice restores an absent assignment before 
  state.choices[date]={[person.id]:choice};state.days[date]={phase:'matched',matchedAt:'2026-10-21T22:00:00+09:00',groups:[]};d.setChoice(state,date,person,choice,new Date('2026-10-22T10:00:00+09:00'));
  assert.equal(d.assignmentOverview(state,date,[person]).assignedCount,1);assert.equal(state.days[date].groups[0].meal,'outside');
 });
+
+
+test('attendance labels separate absence, no choice, default absence and ambiguous legacy records',async()=>{
+ const [d,{ROSTER}]=await ready;const regular=ROSTER[0],hire=ROSTER.at(-1);
+ assert.equal(d.attendanceLabel(regular,{status:'unset',meal:'any'}),'미선택');assert.equal(d.attendanceLabel(regular,{status:'absent',meal:'any'}),'불참 선택');
+ assert.equal(d.attendanceLabel(hire,{status:'absent',meal:'any'},'default'),'기본 불참');assert.equal(d.attendanceLabel(hire,{status:'absent',meal:'any'},'selected'),'불참 선택');assert.equal(d.attendanceLabel(hire,{status:'absent',meal:'any'}),'불참 · 선택 여부 미확인');
+});
+test('new attendance writes record their source, cancellations restore the default and client data cannot choose the source',async()=>{
+ const [d,{ROSTER}]=await ready;const hire=ROSTER.at(-1),date='2026-10-23',state=d.emptyState(),now=new Date('2026-10-22T10:00:00+09:00');
+ d.applyDefaults(state,[date],[hire]);assert.equal(state.choiceOrigins[date][hire.id],'default');
+ d.setChoice(state,date,hire,{status:'absent',meal:'any'},now);assert.equal(state.choiceOrigins[date][hire.id],'selected');
+ d.setChoice(state,date,hire,{status:'join',meal:'outside'},now);assert.equal(state.choiceOrigins[date][hire.id],'selected');
+ d.setChoice(state,date,hire,{status:'unset',meal:'any'},now);assert.equal(state.choiceOrigins[date][hire.id],'default');assert.equal(state.choices[date][hire.id].status,'absent');
+});
