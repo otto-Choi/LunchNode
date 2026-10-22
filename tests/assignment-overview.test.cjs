@@ -19,3 +19,20 @@ test('missing saved choices use roster defaults rather than assuming every perso
  const [d,{ROSTER}]=await ready;const result=d.assignmentOverview(d.emptyState(),'2026-10-22',ROSTER);assert.equal(result.unassigned.length,20);assert.equal(result.unassignedJoined,0);
  assert.deepEqual(result.unassigned[0].choice,{status:'unset',meal:'any'});assert.deepEqual(result.unassigned.at(-1).choice,{status:'absent',meal:'any'});
 });
+
+
+test('unfinalized missing attendees are restored without moving anyone, and final history stays immutable',async()=>{
+ const [d,{ROSTER}]=await ready;const date='2026-10-22',state=d.emptyState(),people=ROSTER.slice(0,4);
+ state.choices[date]=Object.fromEntries(people.map((p,i)=>[p.id,{status:'join',meal:i===3?'outside':'lunchbox'}]));
+ state.days[date]={phase:'matched',matchedAt:'2026-10-21T22:00:00+09:00',groups:[{id:'kept',meal:'lunchbox',members:people.slice(0,2)}]};
+ d.syncDue(state,[date],people,new Date('2026-10-22T10:00:00+09:00'));
+ assert.equal(d.assignmentOverview(state,date,people).unassignedJoined,0);assert.equal(state.days[date].groups[0].id,'kept');assert.deepEqual(state.days[date].groups[0].members.slice(0,2),people.slice(0,2));
+ assert.ok(state.days[date].groups.find(g=>g.members.some(p=>p.id===people[3].id)).meal==='outside');
+ const stable=structuredClone(state);d.syncDue(state,[date],people,new Date('2026-10-22T10:30:00+09:00'));assert.deepEqual(state,stable);
+ state.days[date].phase='final';state.days[date].groups=state.days[date].groups.filter(g=>g.meal==='lunchbox');const final=structuredClone(state.days[date]);d.syncDue(state,[date],people,new Date('2026-10-22T12:00:00+09:00'));assert.deepEqual(state.days[date],final);
+});
+test('repeating the same attendance choice restores an absent assignment before cutoff',async()=>{
+ const [d,{ROSTER}]=await ready;const date='2026-10-22',state=d.emptyState(),person=ROSTER[0],choice={status:'join',meal:'outside'};
+ state.choices[date]={[person.id]:choice};state.days[date]={phase:'matched',matchedAt:'2026-10-21T22:00:00+09:00',groups:[]};d.setChoice(state,date,person,choice,new Date('2026-10-22T10:00:00+09:00'));
+ assert.equal(d.assignmentOverview(state,date,[person]).assignedCount,1);assert.equal(state.days[date].groups[0].meal,'outside');
+});

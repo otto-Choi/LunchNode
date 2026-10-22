@@ -172,6 +172,12 @@ export function syncDue(state:State,dates:string[],people:Person[],now=new Date(
   applyDefaults(state,dates,people);
   for(const date of dates){if(now<matchTime(date))continue;
     if(!state.days[date])state.days[date]={groups:initialMatch(state,date,people,random),phase:'matched',matchedAt:now.toISOString()};
+    if(state.days[date].phase!=='final'){
+      const assigned=new Set(state.days[date].groups.flatMap(g=>g.members.map(p=>p.id)));
+      for(const person of people)if(state.choices[date]?.[person.id]?.status==='join'&&!assigned.has(person.id)){
+        addMember(state,date,person,state.choices[date][person.id].meal,random);assigned.add(person.id);
+      }
+    }
     if(now>=cutoff(date)&&state.days[date].phase!=='final'){state.days[date].phase='final';state.days[date].finalizedAt=now.toISOString();}
   }
 }
@@ -181,7 +187,7 @@ export function setChoice(state:State,date:string,person:Person,choice:Choice,no
   const previous=state.choices[date]?.[person.id];
   if(state.days[date]){
     const day=state.days[date];if(day.phase==='final')throw new Error('이미 확정된 날짜입니다.');
-    if(choice.status==='join'&&previous?.status==='join'&&choice.meal===previous.meal)return;
+    if(choice.status==='join'&&previous?.status==='join'&&choice.meal===previous.meal&&day.groups.some(g=>g.members.some(p=>p.id===person.id)))return;
     day.groups=day.groups.map(g=>({...g,members:g.members.filter(p=>p.id!==person.id)})).filter(g=>g.members.length);
     if(choice.status==='join')addMember(state,date,person,choice.meal);
   }
