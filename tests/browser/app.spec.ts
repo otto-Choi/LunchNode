@@ -97,3 +97,14 @@ test('nonparticipants distinguish selected absence, default absence and legacy u
  await page.goto('/');await page.getByRole('button',{name:'조 편성 결과',exact:true}).click();const section=page.getByRole('region',{name:'조 미포함 인원'}),row=(name:string)=>section.getByRole('listitem').filter({hasText:name});
  await expect(row('김범준').locator('.status-label')).toHaveText('불참 선택');await expect(row('박대원').locator('.status-label')).toHaveText('기본 불참');await expect(row('박진영').locator('.status-label')).toHaveText('불참 · 선택 여부 미확인');await expect(row('권도영').locator('.status-label')).toHaveText('미선택');await expect(section.locator('.attendance-breakdown')).toHaveText('불참 3명 · 미선택 1명 · 참석 미배정 0명');expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
 });
+
+test('result date stays on today at lunchtime and switches at 13:00 while December hires stay last',async({page})=>{
+ const date='2026-10-22';await page.clock.install({time:new Date(`${date}T12:59:58+09:00`)});await page.clock.pauseAt(new Date(`${date}T12:59:59+09:00`));
+ const people=[{id:'h1',name:'김범준',className:'12월 입사자'},{id:'n1',name:'권도영',className:'4반'},{id:'h2',name:'박대원',className:'12월 입사자'},{id:'n2',name:'박서연',className:'5반'}];
+ await page.route('**/api/state',route=>route.fulfill({json:{demo:false,user:people[1],people,dates:[date,'2026-10-23','2026-10-26'],now:`${date}T12:59:59+09:00`,state:{choices:{},days:{[date]:{phase:'final',matchedAt:'2026-10-21T22:00:00+09:00',groups:[]}},events:[]}}}));
+ await page.goto('/');await page.getByRole('button',{name:'조 편성 결과',exact:true}).click();const select=page.getByLabel('조 편성 날짜');await expect(select).toHaveValue(date);
+ const names=page.getByRole('region',{name:'조 미포함 인원'}).locator('.ungrouped-person strong');await expect(names).toHaveText(['권도영나','박서연','김범준','박대원']);
+ await page.clock.fastForward(1200);await expect(select).toHaveValue('2026-10-23');
+ await select.selectOption('2026-10-26');await page.clock.fastForward(31000);await expect(select).toHaveValue('2026-10-26');
+ await page.getByRole('button',{name:'내 점심 일정',exact:false}).click();await page.getByRole('button',{name:'조 편성 결과',exact:true}).click();await expect(select).toHaveValue('2026-10-23');
+});

@@ -28,13 +28,17 @@ export function attendanceLabel(person:Person,choice:Choice,origin?:ChoiceOrigin
 export function assignmentOverview(state:State,date:string,people:Person[]) {
   // Always use all groups, not the UI's "my groups" filter.
   const assigned=new Set((state.days[date]?.groups||[]).flatMap(g=>g.members.map(p=>p.id)));
-  const unassigned=people.filter(p=>!assigned.has(p.id)).map(person=>({person,choice:state.choices[date]?.[person.id]||defaultChoice(person)}));
+  const unassigned=people.filter(p=>!assigned.has(p.id)).sort((a,b)=>Number(a.className==='12월 입사자')-Number(b.className==='12월 입사자')).map(person=>({person,choice:state.choices[date]?.[person.id]||defaultChoice(person)}));
   return {assignedCount:people.length-unassigned.length,unassigned,unassignedJoined:unassigned.filter(row=>row.choice.status==='join').length};
 }
 export function allowsMeal(meal:Meal,actual:MealType) {return meal!=='lunchbox'&&meal!=='outside'||meal===actual;}
 function preferenceCost(meal:Meal,actual:MealType) {const preferred=preferredMeal(meal);return preferred&&preferred!==actual?1:0;}
 function compareCost(a:number[],b:number[]) {for(let i=0;i<a.length;i++){const difference=a[i]-b[i];if(difference)return difference;}return 0;}
 export function seoulDate(now = new Date()) { return new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Seoul',year:'numeric',month:'2-digit',day:'2-digit'}).format(now); }
+export function defaultResultsDate(dates:string[],now=new Date()) {
+  const today=seoulDate(now),afterLunch=now>=new Date(`${today}T13:00:00+09:00`);
+  return dates.find(date=>afterLunch?date>today:date>=today)||dates.at(-1)||'';
+}
 export function cutoff(date: string) { return new Date(`${date}T11:00:00+09:00`); }
 export function matchTime(date: string) { return new Date(new Date(`${date}T00:00:00+09:00`).getTime()-2*3600000); }
 export function weekdays(start: string, end: string) {
