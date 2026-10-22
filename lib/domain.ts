@@ -1,5 +1,6 @@
 export const MEAL_OPTIONS = ['lunchbox','prefer_lunchbox','any','prefer_outside','outside'] as const;
 export type Meal = typeof MEAL_OPTIONS[number];
+export type MatchingPolicy = { effectiveDate:string; genderByName:Readonly<Record<string,1|2>> };
 export type MealType = 'lunchbox' | 'outside';
 export type Choice = { status: 'unset' | 'join' | 'absent'; meal: Meal };
 export type Person = { id: string; name: string; className: string; defaultStatus?: 'unset' | 'absent' };
@@ -46,7 +47,7 @@ export function encounters(state:State, date:string, a:string, b:string) {
 // Lexicographic cost: avoid tiny groups, minimize five-person groups, maximize
 // four-person groups, then avoid recent/cumulative repeats and soft menu mismatches. BigInt keeps
 // every historical date significant without floating-point weight loss.
-function matchingCosts(state:State,date:string,people:Person[]) {
+function matchingCosts(state:State,date:string,people:Person[],policy?:MatchingPolicy) {
   const history=Object.entries(state.days).filter(([d,v])=>d<date&&v.phase==='final').sort(([a],[b])=>a.localeCompare(b));
   const index=new Map(people.map((p,i)=>[p.id,i]));
   const counts=people.map(()=>people.map(()=>0));
@@ -61,18 +62,27 @@ function matchingCosts(state:State,date:string,people:Person[]) {
   const frequencyUnit=preferenceUnit*BigInt(people.length+1);
   const recencyUnit=frequencyUnit*BigInt(history.length*people.length*people.length+1);
   const pairs=people.map((_,i)=>people.map((__,j)=>latest[i][j]<0?0n:recencyUnit*base**BigInt(latest[i][j])+BigInt(counts[i][j])*frequencyUnit));
-  const threeUnit=recencyUnit*base**BigInt(history.length+1);
+  const balanceUnit=recencyUnit*base**BigInt(history.length+1);
+  const activePolicy=policy&&date>=policy.effectiveDate?policy:undefined;
+  const balanceCost=(members:Person[])=>{
+    if(!activePolicy)return 0n;
+    let difference=0;for(const person of members){const value=activePolicy.genderByName[person.name];if(value===1)difference++;else if(value===2)difference--;}
+    return BigInt(difference*difference);
+  };
+  // Across all groups the squared imbalance cannot exceed n*n.
+  const threeUnit=activePolicy?balanceUnit*BigInt(people.length*people.length+1):balanceUnit;
   const fiveUnit=threeUnit*BigInt(people.length+1);
   const smallUnit=fiveUnit*BigInt(people.length+1);
-  return {pairs,index,smallUnit,preferenceUnit,fiveUnit,threeUnit};
+  return {pairs,index,smallUnit,preferenceUnit,fiveUnit,threeUnit,balanceUnit,balanceCost};
 }
-export function initialMatch(state:State,date:string,people:Person[],random=Math.random):Group[] {
+export function initialMatch(state:State,date:string,people:Person[],random=Math.random,policy?:MatchingPolicy):Group[] {
   const choices=state.choices[date]??{};
   const joined=shuffle(people.filter(p=>choices[p.id]?.status==='join'),random);
   if(!joined.length)return [];
-  const weights=matchingCosts(state,date,joined);
+  const weights=matchingCosts(state,date,joined,policy);
   const evaluate=(members:Person[],meal:MealType)=>{
     let cost=BigInt(Math.max(0,3-members.length))*weights.smallUnit+(members.length===5?weights.fiveUnit:members.length===3?weights.threeUnit:0n);
+    cost+=weights.balanceCost(members)*weights.balanceUnit;
     for(let i=0;i<members.length;i++){
       cost+=BigInt(preferenceCost(choices[members[i].id].meal,meal))*weights.preferenceUnit;
       for(let j=i+1;j<members.length;j++)cost+=weights.pairs[weights.index.get(members[i].id)!][weights.index.get(members[j].id)!];
@@ -141,15 +151,16 @@ export function initialMatch(state:State,date:string,people:Person[],random=Math
   if(assigned.length!==joined.length||new Set(assigned).size!==joined.length||joined.some(p=>!assigned.includes(p.id)))throw new Error('참석자 배정 확인에 실패했습니다. 다시 시도해 주세요.');
   return best.map((g,i)=>({...g,id:`${date}-${i+1}`}));
 }
-export function addMember(state:State,date:string,person:Person,meal:Meal,random=Math.random) {
+export function addMember(state:State,date:string,person:Person,meal:Meal,random=Math.random,policy?:MatchingPolicy) {
   const day=state.days[date];if(day.groups.some(g=>g.members.some(p=>p.id===person.id)))return;
   const people=[person,...day.groups.flatMap(g=>g.members)];
-  const weights=matchingCosts(state,date,people);
+  const weights=matchingCosts(state,date,people,policy);
   const compatible=day.groups.filter(g=>g.members.length<5&&allowsMeal(meal,g.meal));
   // Preserve existing assignments while avoiding a fifth member whenever a smaller compatible group exists.
   const belowFour=compatible.filter(g=>g.members.length<4);
   const candidates=shuffle(belowFour.length?belowFour:compatible,random);
-  const cost=(g:Group)=>g.members.reduce((n,p)=>n+weights.pairs[0][weights.index.get(p.id)!],0n);
+  // Compare the change in total imbalance, rather than the resulting group alone.
+  const cost=(g:Group)=>(weights.balanceCost([...g.members,person])-weights.balanceCost(g.members))*weights.balanceUnit+g.members.reduce((n,p)=>n+weights.pairs[0][weights.index.get(p.id)!],0n);
   candidates.sort((a,b)=>{
     const ca=cost(a),cb=cost(b);if(ca!==cb)return ca<cb?-1:1;
     return compareCost([a.members.length<3?0:1,preferenceCost(meal,a.meal),a.members.length],[b.members.length<3?0:1,preferenceCost(meal,b.meal),b.members.length]);
@@ -162,26 +173,26 @@ export function addMember(state:State,date:string,person:Person,meal:Meal,random
   }
 }
 // Replaces an unfinalized assignment in place. Discarded groups never enter history.
-export function rematchDay(state:State,date:string,people:Person[],now=new Date(),random=Math.random) {
+export function rematchDay(state:State,date:string,people:Person[],now=new Date(),random=Math.random,policy?:MatchingPolicy) {
   if(now>=cutoff(date)||state.days[date]?.phase==='final')throw new Error('오전 11시 마감 이후에는 재편성할 수 없습니다.');
   if(now<matchTime(date)||!state.days[date])throw new Error('최초 편성 이후에만 재편성할 수 있습니다.');
-  state.days[date]={...state.days[date],groups:initialMatch(state,date,people,random),rematchedAt:now.toISOString()};
+  state.days[date]={...state.days[date],groups:initialMatch(state,date,people,random,policy),rematchedAt:now.toISOString()};
   return state.days[date];
 }
-export function syncDue(state:State,dates:string[],people:Person[],now=new Date(),random=Math.random) {
+export function syncDue(state:State,dates:string[],people:Person[],now=new Date(),random=Math.random,policy?:MatchingPolicy) {
   applyDefaults(state,dates,people);
   for(const date of dates){if(now<matchTime(date))continue;
-    if(!state.days[date])state.days[date]={groups:initialMatch(state,date,people,random),phase:'matched',matchedAt:now.toISOString()};
+    if(!state.days[date])state.days[date]={groups:initialMatch(state,date,people,random,policy),phase:'matched',matchedAt:now.toISOString()};
     if(state.days[date].phase!=='final'){
       const assigned=new Set(state.days[date].groups.flatMap(g=>g.members.map(p=>p.id)));
       for(const person of people)if(state.choices[date]?.[person.id]?.status==='join'&&!assigned.has(person.id)){
-        addMember(state,date,person,state.choices[date][person.id].meal,random);assigned.add(person.id);
+        addMember(state,date,person,state.choices[date][person.id].meal,random,policy);assigned.add(person.id);
       }
     }
     if(now>=cutoff(date)&&state.days[date].phase!=='final'){state.days[date].phase='final';state.days[date].finalizedAt=now.toISOString();}
   }
 }
-export function setChoice(state:State,date:string,person:Person,choice:Choice,now=new Date()) {
+export function setChoice(state:State,date:string,person:Person,choice:Choice,now=new Date(),policy?:MatchingPolicy) {
   if(now>=cutoff(date))throw new Error('오전 11시 마감 이후에는 변경할 수 없습니다.');
   if(choice.status==='unset')choice=defaultChoice(person);
   const previous=state.choices[date]?.[person.id];
@@ -189,7 +200,7 @@ export function setChoice(state:State,date:string,person:Person,choice:Choice,no
     const day=state.days[date];if(day.phase==='final')throw new Error('이미 확정된 날짜입니다.');
     if(choice.status==='join'&&previous?.status==='join'&&choice.meal===previous.meal&&day.groups.some(g=>g.members.some(p=>p.id===person.id)))return;
     day.groups=day.groups.map(g=>({...g,members:g.members.filter(p=>p.id!==person.id)})).filter(g=>g.members.length);
-    if(choice.status==='join')addMember(state,date,person,choice.meal);
+    if(choice.status==='join')addMember(state,date,person,choice.meal,Math.random,policy);
   }
   (state.choices[date]??={})[person.id]={...choice};
   state.events.push({date,userId:person.id,action:choice.status==='join'?`참여:${choice.meal}`:choice.status==='absent'?'불참':'미응답',at:now.toISOString()});

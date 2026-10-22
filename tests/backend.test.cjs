@@ -170,3 +170,12 @@ test('rematch retries from current attendance after a concurrent state write',as
  const result=await backend.handle('admin',f.request('admin',{key:f.options.adminSecret,action:'rematch',date},actor));assert.equal(result.status,200);assert.equal(conflicts,2);
  const groups=f.getState().days[date].groups;assert.equal(groups.flatMap(g=>g.members).length,2);for(const g of groups)for(const p of g.members)assert.equal(g.meal,p.id===f.ROSTER[0].id?'lunchbox':'outside');
 });
+
+test('tonight cron uses operational balancing without publishing demographic inputs',async()=>{
+ const f=await fixture(),date='2026-10-23';const names=['권도영','김민국','김상규','유태상','김서영','손규영','안소이','김주연'];const cookies=await Promise.all(names.map(name=>f.register(f.ROSTER.find(p=>p.name===name))));
+ await Promise.all(cookies.map(cookie=>f.send('state',{dates:[date],choice:{status:'join',meal:'any'}},cookie)));
+ f.setNow('2026-10-22T21:59:59+09:00');const early=await (await f.send('state',undefined,cookies[0])).json();assert.equal(early.state.days[date],undefined);
+ f.setNow('2026-10-22T22:00:00+09:00');const result=await f.send('cron',undefined,'',{authorization:'Bearer test-cron-secret'});assert.equal(result.status,200);
+ const state=await (await f.send('state',undefined,cookies[0])).json();assert.equal(state.state.days[date].groups.length,2);const females=new Set(['김서영','손규영','안소이','김주연']);for(const group of state.state.days[date].groups){assert.equal(group.members.length,4);assert.equal(group.members.filter(p=>females.has(p.name)).length,2);}
+ assert.ok(!JSON.stringify(state).includes('genderByName'));for(const person of state.people)assert.ok(!('gender' in person));
+});

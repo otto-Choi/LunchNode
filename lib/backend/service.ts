@@ -1,4 +1,5 @@
 import { isMeal, cutoff, matchTime, rematchDay, setChoice, syncDue, type Choice, type Person, type State } from '../domain.ts';
+import { matchingPolicy } from './matching-policy.ts';
 import { rosterMember } from '../roster.ts';
 import { ApiError, checkOrigin, digest, errorResponse, hashPin, newToken, pinValue, readJson, response, secretEqual, sessionCookie, tokenFrom, verifyPin } from './security.ts';
 export type Rpc = <T=unknown>(name: string, args: Record<string,unknown>) => Promise<T>;
@@ -24,13 +25,13 @@ export function createBackend(options:Options) {
       if(!cron&&!snap.user)throw new ApiError(401,'AUTH','로그인이 필요합니다.');
       if(snap.people.length!==20)throw new ApiError(503,'ROSTER','참가자 명단 설정을 확인해 주세요.');
       const before=JSON.stringify(snap.state);const now=new Date(snap.now);
-      syncDue(snap.state,snap.dates,snap.people,now);
+      syncDue(snap.state,snap.dates,snap.people,now,Math.random,matchingPolicy);
       if(change){
         for(const date of change.dates){
           if(!snap.dates.includes(date))throw new ApiError(400,'DATE','운영 기간의 평일만 신청할 수 있습니다.');
           if(now>=cutoff(date)||snap.state.days[date]?.phase==='final')throw new ApiError(409,'CLOSED','오전 11시 마감 이후에는 변경할 수 없습니다.');
         }
-        for(const date of change.dates)setChoice(snap.state,date,snap.user!,change.choice,now);
+        for(const date of change.dates)setChoice(snap.state,date,snap.user!,change.choice,now,matchingPolicy);
       }
       if(before===JSON.stringify(snap.state)||await rpc<boolean>('lunch_commit_state',{
         p_token_hash:tokenHash(request),p_expected_version:snap.version,p_data:snap.state,
@@ -102,7 +103,7 @@ export function createBackend(options:Options) {
         const now=new Date(snap.now),day=snap.state.days[body.date];
         if(now>=cutoff(body.date)||day?.phase==='final')throw new ApiError(409,'CLOSED','오전 11시 마감 이후에는 재편성할 수 없습니다.');
         if(now<matchTime(body.date)||!day)throw new ApiError(409,'NOT_MATCHED','최초 편성 이후에만 재편성할 수 있습니다.');
-        const next=rematchDay(snap.state,body.date,snap.people,now);
+        const next=rematchDay(snap.state,body.date,snap.people,now,Math.random,matchingPolicy);
         if(await rpc<boolean>('lunch_admin_rematch',{p_actor_token:tokenHash(request),p_expected_version:snap.version,p_date:body.date,p_groups:next.groups}))return response({ok:true,message:`${body.date} 전체 조를 재편성했습니다. 최종 확정 전 조는 만남 횟수에 포함하지 않습니다.`});
         await delay();
       }
