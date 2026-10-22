@@ -24,10 +24,10 @@ test('20 attendees form five 2:2 groups and 17 default attendees have balanced o
  }
 });
 
-test('balance is prioritized over historical encounters and soft preferences, while hard menus remain mandatory',async()=>{
+test('repeat history precedes balance and soft preferences, while hard menus remain mandatory',async()=>{
  const [d,{ROSTER},{matchingPolicy:p}]=await ready;const males=ROSTER.filter(x=>p.genderByName[x.name]===1).slice(0,4),females=ROSTER.filter(x=>p.genderByName[x.name]===2).slice(0,4),people=[...males,...females],date='2026-10-23',state=setup(d,people,date);
- state.days['2026-10-22']={phase:'final',matchedAt:'2026-10-21T22:00:00+09:00',groups:[{id:'a',meal:'lunchbox',members:[...males.slice(0,2),...females.slice(0,2)]},{id:'b',meal:'outside',members:[...males.slice(2),...females.slice(2)]}]};
- for(const x of males)state.choices[date][x.id].meal='prefer_lunchbox';for(const x of females)state.choices[date][x.id].meal='prefer_outside';assert.equal(imbalance(d.initialMatch(state,date,people,rng(),p),p),0);
+ state.days['2026-10-22']={phase:'final',matchedAt:'2026-10-21T22:00:00+09:00',groups:males.flatMap(m=>females.map(f=>({id:m.id+f.id,meal:'lunchbox',members:[m,f]})))};
+ for(const x of males)state.choices[date][x.id].meal='prefer_lunchbox';for(const x of females)state.choices[date][x.id].meal='prefer_outside';assert.equal(imbalance(d.initialMatch(state,date,people,rng(),p),p),32);
  for(const x of males)state.choices[date][x.id].meal='lunchbox';for(const x of females)state.choices[date][x.id].meal='outside';const groups=d.initialMatch(state,date,people,rng(),p);for(const g of groups)for(const x of g.members)assert.equal(g.meal,state.choices[date][x.id].meal);assert.deepEqual(groups.map(g=>g.members.length),[4,4]);
 });
 

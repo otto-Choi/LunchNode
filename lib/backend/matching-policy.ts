@@ -4,6 +4,7 @@ import type { MatchingPolicy } from '../domain.ts';
 // First affected lunch is Oct 23: its initial match runs Oct 22 at 22:00 KST.
 export const matchingPolicy:MatchingPolicy={
  effectiveDate:'2026-10-23',
+ balanceClasses:true,
  genderByName:{
   '박서연':2,'서유빈':2,'최철원':1,'박진홍':1,'부유경':2,
   '오성현':1,'김서영':2,'김영탁':1,'권도영':1,'양우진':2,
