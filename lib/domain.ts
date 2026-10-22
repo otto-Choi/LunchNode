@@ -32,13 +32,13 @@ const shuffle = <T,>(items:T[], random:()=>number) => { const a=[...items];for(l
 function sizes(n:number):number[] {
   if(n===0)return [];if(n<=5)return [n];
   const possibilities = [3,4,5].filter(x=>n-x>=3).map(x=>[x,...sizes(n-x)]);
-  return possibilities.sort((a,b)=>a.filter(x=>x===5).length-b.filter(x=>x===5).length)[0];
+  return possibilities.sort((a,b)=>compareCost([a.filter(x=>x===5).length,a.filter(x=>x===3).length],[b.filter(x=>x===5).length,b.filter(x=>x===3).length]))[0];
 }
 export function encounters(state:State, date:string, a:string, b:string) {
   return Object.entries(state.days).filter(([d,v])=>d<date&&v.phase==='final').reduce((n,[,v])=>n+Number(v.groups.some(g=>g.members.some(p=>p.id===a)&&g.members.some(p=>p.id===b))),0);
 }
-// Lexicographic cost: avoid tiny groups, then the most recent repeat encounters,
-// then cumulative repeats, soft preferences, and five-person groups. BigInt keeps
+// Lexicographic cost: avoid tiny groups, minimize five-person groups, maximize
+// four-person groups, then avoid recent/cumulative repeats and soft menu mismatches. BigInt keeps
 // every historical date significant without floating-point weight loss.
 function matchingCosts(state:State,date:string,people:Person[]) {
   const history=Object.entries(state.days).filter(([d,v])=>d<date&&v.phase==='final').sort(([a],[b])=>a.localeCompare(b));
@@ -51,12 +51,14 @@ function matchingCosts(state:State,date:string,people:Person[]) {
   }});
   // A group plan has at most n*(n-1)/2 pairs. Each recency digit therefore cannot carry.
   const base=BigInt(Math.max(2,people.length*people.length+1));
-  const fiveUnit=1n,preferenceUnit=BigInt(people.length+1);
+  const preferenceUnit=1n;
   const frequencyUnit=preferenceUnit*BigInt(people.length+1);
   const recencyUnit=frequencyUnit*BigInt(history.length*people.length*people.length+1);
   const pairs=people.map((_,i)=>people.map((__,j)=>latest[i][j]<0?0n:recencyUnit*base**BigInt(latest[i][j])+BigInt(counts[i][j])*frequencyUnit));
-  const smallUnit=recencyUnit*base**BigInt(history.length+1);
-  return {pairs,index,smallUnit,preferenceUnit,fiveUnit};
+  const threeUnit=recencyUnit*base**BigInt(history.length+1);
+  const fiveUnit=threeUnit*BigInt(people.length+1);
+  const smallUnit=fiveUnit*BigInt(people.length+1);
+  return {pairs,index,smallUnit,preferenceUnit,fiveUnit,threeUnit};
 }
 export function initialMatch(state:State,date:string,people:Person[],random=Math.random):Group[] {
   const choices=state.choices[date]??{};
@@ -64,7 +66,7 @@ export function initialMatch(state:State,date:string,people:Person[],random=Math
   if(!joined.length)return [];
   const weights=matchingCosts(state,date,joined);
   const evaluate=(members:Person[],meal:MealType)=>{
-    let cost=BigInt(Math.max(0,3-members.length))*weights.smallUnit+(members.length===5?weights.fiveUnit:0n);
+    let cost=BigInt(Math.max(0,3-members.length))*weights.smallUnit+(members.length===5?weights.fiveUnit:members.length===3?weights.threeUnit:0n);
     for(let i=0;i<members.length;i++){
       cost+=BigInt(preferenceCost(choices[members[i].id].meal,meal))*weights.preferenceUnit;
       for(let j=i+1;j<members.length;j++)cost+=weights.pairs[weights.index.get(members[i].id)!][weights.index.get(members[j].id)!];
@@ -135,7 +137,10 @@ export function addMember(state:State,date:string,person:Person,meal:Meal,random
   const day=state.days[date];if(day.groups.some(g=>g.members.some(p=>p.id===person.id)))return;
   const people=[person,...day.groups.flatMap(g=>g.members)];
   const weights=matchingCosts(state,date,people);
-  const candidates=shuffle(day.groups.filter(g=>g.members.length<5&&allowsMeal(meal,g.meal)),random);
+  const compatible=day.groups.filter(g=>g.members.length<5&&allowsMeal(meal,g.meal));
+  // Preserve existing assignments while avoiding a fifth member whenever a smaller compatible group exists.
+  const belowFour=compatible.filter(g=>g.members.length<4);
+  const candidates=shuffle(belowFour.length?belowFour:compatible,random);
   const cost=(g:Group)=>g.members.reduce((n,p)=>n+weights.pairs[0][weights.index.get(p.id)!],0n);
   candidates.sort((a,b)=>{
     const ca=cost(a),cb=cost(b);if(ca!==cb)return ca<cb?-1:1;
