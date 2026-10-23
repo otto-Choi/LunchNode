@@ -3,10 +3,10 @@ const assert=require('node:assert/strict');
 async function fixture(){
  const {createApplication}=await import('../lib/backend/application.ts');
  const {ROSTER}=await import('../lib/roster.ts');const {GLOBAL_ROSTER}=await import('../lib/backend/global-roster.ts');
- const env={SUPABASE_URL:'https://ax.test',SUPABASE_SERVICE_ROLE_KEY:'ax-service',INVITE_CODE:'ax-code',ADMIN_SECRET:'ax-operator-key-longer-than-32-characters',GLOBAL_SUPABASE_URL:'https://global.test',GLOBAL_SUPABASE_SERVICE_ROLE_KEY:'global-service',GLOBAL_INVITE_CODE:'global-code',GLOBAL_ADMIN_SECRET:'global-operator-key-longer-than-32-characters',CRON_SECRET:'cron',APP_ORIGIN:'https://lunch.test'};
+ const env={SUPABASE_URL:'https://ax.test',SUPABASE_SERVICE_ROLE_KEY:'ax-service',INVITE_CODE:'ax-code',ADMIN_SECRET:'ax-operator-key-longer-than-32-characters',GLOBAL_INVITE_CODE:'global-code',GLOBAL_ADMIN_SECRET:'global-operator-key-longer-than-32-characters',CRON_SECRET:'cron',APP_ORIGIN:'https://lunch.test'};
  const stores={ax:{people:ROSTER,tenant:'ax'},global:{people:GLOBAL_ROSTER,tenant:'global'}};
  for(const st of Object.values(stores))Object.assign(st,{users:new Map(),sessions:new Map(),state:{choices:{},days:{},events:[]},version:0,jobs:[]});
- const rpcFactory=url=>async(name,a)=>{const st=stores[url==='https://ax.test'?'ax':'global'];if(st.fail)throw Error('unavailable');switch(name){
+ const rpcFactory=(url,key)=>{assert.equal(url,'https://ax.test');assert.equal(key,'ax-service');return async(name,a)=>{const isGlobal=name.startsWith('global_lunch_');const st=stores[isGlobal?'global':'ax'];if(isGlobal)name=name.slice(7);if(st.fail)throw Error('unavailable');switch(name){
  case 'lunch_tenant_info':return {tenant:st.tenant};case 'lunch_rate_limit':return true;
  case 'lunch_identity':return st.sessions.get(a.p_token_hash)||null;
  case 'lunch_register':{const p=st.people.find(p=>p.name===a.p_name);st.users.set(p.id,p);st.sessions.set(a.p_token_hash,p);return p;}
@@ -14,14 +14,14 @@ async function fixture(){
  case 'lunch_commit_state':st.state=structuredClone(a.p_data);st.version++;return true;
  case 'lunch_cleanup':return true;case 'lunch_record_job':st.jobs.push(a.p_ok);return true;
  case 'lunch_system_status':return {tenant:st.tenant};default:throw Error(name);
- }};
+ }}};
  const app=createApplication({env,rpcFactory});
  const call=(endpoint,tenant,body,cookie='',extra={})=>app.handle(endpoint,new Request('https://lunch.test/api/'+endpoint,{method:body?'POST':'GET',headers:{origin:'https://lunch.test','content-type':'application/json','x-lunch-tenant':tenant,cookie,...extra},...(body?{body:JSON.stringify(body)}:{})}));
  const unlock=async tenant=>{const r=await call('auth',tenant,{action:'unlock',invite:tenant+'-code'});assert.equal(r.status,200,await r.clone().text());return r.headers.get('set-cookie').split(';')[0];};
  return {env,stores,app,call,unlock};
 }
-test('headquarters require distinct DB, invite and operator settings',async()=>{
- const f=await fixture();for(const key of ['GLOBAL_SUPABASE_URL','GLOBAL_INVITE_CODE','GLOBAL_ADMIN_SECRET']){const previous=f.env[key];f.env[key]=f.env[{GLOBAL_SUPABASE_URL:'SUPABASE_URL',GLOBAL_INVITE_CODE:'INVITE_CODE',GLOBAL_ADMIN_SECRET:'ADMIN_SECRET'}[key]];const r=await f.call('auth','global',{action:'unlock',invite:'global-code'});assert.equal(r.status,503);f.env[key]=previous;}
+test('headquarters share one DB but require distinct invite and operator settings',async()=>{
+ const f=await fixture();for(const key of ['GLOBAL_INVITE_CODE','GLOBAL_ADMIN_SECRET']){const previous=f.env[key];f.env[key]=f.env[{GLOBAL_SUPABASE_URL:'SUPABASE_URL',GLOBAL_INVITE_CODE:'INVITE_CODE',GLOBAL_ADMIN_SECRET:'ADMIN_SECRET'}[key]];const r=await f.call('auth','global',{action:'unlock',invite:'global-code'});assert.equal(r.status,503);f.env[key]=previous;}
  f.stores.global.tenant='ax';assert.equal((await f.call('auth','global',{action:'unlock',invite:'global-code'})).status,503);
 });
 test('invite gates never expose another headquarters roster',async()=>{
@@ -43,3 +43,5 @@ test('sessions, choices, roster validation and operator keys stay within the sel
 test('one headquarters job failure cannot prevent the other job from completing',async()=>{
  const f=await fixture();f.stores.global.fail=true;const r=await f.call('cron','ax',undefined,'',{authorization:'Bearer cron'});assert.equal(r.status,503);const body=await r.json();assert.deepEqual(body.results.map(r=>[r.id,r.ok]),[['ax',true],['global',false]]);assert.deepEqual(f.stores.ax.jobs,[true]);
 });
+
+test('obsolete Global connection variables cannot route requests to another database',async()=>{const f=await fixture();f.env.GLOBAL_SUPABASE_URL='https://wrong.test';f.env.GLOBAL_SUPABASE_SERVICE_ROLE_KEY='wrong-key';await f.unlock('global');});

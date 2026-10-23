@@ -126,3 +126,16 @@ test('Global invite gate, headquarters headers, contact link and monthly desktop
  }else{for(const card of await page.locator('.date-cell.past-date').all())await expect(card).toBeHidden();await expect(page.getByRole('button',{name:'11월 30일 선택',exact:true})).toBeVisible();}
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
 });
+
+test('Global registers and saves to its own tables through the shared Supabase connection',async({page},info)=>{
+ await page.goto('/');await page.getByLabel('본부',{exact:true}).selectOption('global');
+ await page.getByLabel('초대 코드').fill('ci-global-invitation');await page.getByRole('button',{name:'초대 코드 확인',exact:true}).click();
+ await expect(page.getByLabel('이름',{exact:true})).not.toContainText('권도영');await expect(page.getByLabel('이름',{exact:true})).toContainText('박인홍');
+ await page.getByRole('button',{name:'처음이라면 최초 등록'}).click();await page.getByLabel('이름',{exact:true}).selectOption(info.project.name==='mobile'?'박인홍':'류지환');await page.getByLabel('숫자 6자리 PIN').fill('123456');
+ const loaded=page.waitForResponse(r=>r.url().endsWith('/api/state')&&r.ok());await page.getByRole('button',{name:'등록',exact:true}).click();const payload=await (await loaded).json();await expect(page.locator('.breadcrumb')).toContainText('Global');
+ expect(payload.people).toHaveLength(20);expect(payload.people.every((p:any)=>p.defaultStatus==='unset'&&['IOA','IPO'].includes(p.className))).toBe(true);
+ const date=payload.dates.find((d:string)=>new Date(payload.now)<new Date(d+'T11:00:00+09:00')),label=`${Number(date.slice(5,7))}월 ${Number(date.slice(8))}일`;
+ const write=page.waitForResponse(r=>r.url().endsWith('/api/state')&&r.request().method()==='POST');await page.getByRole('button',{name:label+' 참석',exact:true}).click();const saved=await write;expect(saved.ok()).toBe(true);expect(saved.request().headers()['x-lunch-tenant']).toBe('global');
+ await page.reload();await expect(page.locator('.breadcrumb')).toContainText('Global');await expect(page.locator('.date-cell.selected .status-label')).toHaveText('참석');
+ const cookies=await page.context().cookies();expect(cookies.some(c=>c.name==='lunch_session_global')).toBe(true);expect(cookies.some(c=>c.name==='lunch_session')).toBe(false);
+});

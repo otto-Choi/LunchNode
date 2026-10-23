@@ -4,7 +4,7 @@ export default defineConfig({
  reporter:[['list'],['html',{open:'never'}]],
  webServer:[
   {command:'node tests/rpc-bridge.mjs',url:'http://127.0.0.1:54329/health',reuseExistingServer:false},
-  {command:'npm run start -- --port 3000',url:'http://localhost:3000',reuseExistingServer:false,env:{SUPABASE_URL:'http://127.0.0.1:54329',SUPABASE_SERVICE_ROLE_KEY:'ci-only-service-key',INVITE_CODE:'ci-invitation',CRON_SECRET:'ci-cron',ADMIN_SECRET:'ci-operator-secret-at-least-32-chars',APP_ORIGIN:'http://localhost:3000',DEMO_MODE:'false'}}
+  {command:'npm run start -- --port 3000',url:'http://localhost:3000',reuseExistingServer:false,env:{SUPABASE_URL:'http://127.0.0.1:54329',SUPABASE_SERVICE_ROLE_KEY:'ci-only-service-key',INVITE_CODE:'ci-invitation',GLOBAL_INVITE_CODE:'ci-global-invitation',GLOBAL_ADMIN_SECRET:'ci-global-operator-key-at-least-32-characters',CRON_SECRET:'ci-cron',ADMIN_SECRET:'ci-operator-secret-at-least-32-chars',APP_ORIGIN:'http://localhost:3000',DEMO_MODE:'false'}}
  ],
  projects:[{name:'desktop',use:{...devices['Desktop Chrome']}},{name:'mobile',use:{...devices['iPhone 13'],defaultBrowserType:'chromium'}}]
 });

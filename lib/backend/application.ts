@@ -1,21 +1,21 @@
 import {createBackend,type Rpc} from './service.ts';
 import {supabaseRpc} from './supabase.ts';
+import {tenantRpc} from './tenant-rpc.ts';
 import {HEADQUARTERS,isHeadquarters,type HeadquartersId} from '../headquarters.ts';
 import {tenantConfig} from './tenant-config.ts';
 import {ApiError,errorResponse,response,secretEqual} from './security.ts';
 type Env=Record<string,string|undefined>;
 type Endpoint='auth'|'state'|'profile'|'cron'|'health'|'admin'|'tenants';
 export function createApplication({env,rpcFactory=supabaseRpc}:{env:Env;rpcFactory?:(url:string,key:string)=>Rpc}){
- const config=(id:HeadquartersId)=>id==='ax'?{url:env.AX_SUPABASE_URL||env.SUPABASE_URL,key:env.AX_SUPABASE_SERVICE_ROLE_KEY||env.SUPABASE_SERVICE_ROLE_KEY,invite:env.AX_INVITE_CODE||env.INVITE_CODE,admin:env.AX_ADMIN_SECRET||env.ADMIN_SECRET}:{url:env.GLOBAL_SUPABASE_URL,key:env.GLOBAL_SUPABASE_SERVICE_ROLE_KEY,invite:env.GLOBAL_INVITE_CODE,admin:env.GLOBAL_ADMIN_SECRET};
- const normalize=(url:string)=>new URL(url).origin;
+ const config=(id:HeadquartersId)=>({url:env.AX_SUPABASE_URL||env.SUPABASE_URL,key:env.AX_SUPABASE_SERVICE_ROLE_KEY||env.SUPABASE_SERVICE_ROLE_KEY,...(id==='ax'?{invite:env.AX_INVITE_CODE||env.INVITE_CODE,admin:env.AX_ADMIN_SECRET||env.ADMIN_SECRET}:{invite:env.GLOBAL_INVITE_CODE,admin:env.GLOBAL_ADMIN_SECRET})});
  function validate(id:HeadquartersId){const c=config(id);if(!c.url||!c.key)throw new ApiError(503,'CONFIG','본부 DB 연결 설정이 필요합니다.');
   if(id==='global'){
-   const ax=config('ax');if(ax.url&&normalize(c.url)===normalize(ax.url))throw new ApiError(503,'CONFIG','Global에는 AX Node와 다른 Supabase 프로젝트가 필요합니다.');
+   const ax=config('ax');
    if(!c.invite||c.invite===ax.invite||!c.admin||c.admin.length<32||c.admin===ax.admin)throw new ApiError(503,'CONFIG','Global 전용 초대 코드와 별도의 32자 이상 운영자 키가 필요합니다.');
   }return c;
  }
  const available=(id:HeadquartersId)=>{try{validate(id);return true;}catch{return false;}};
- async function backend(id:HeadquartersId){const c=validate(id),rpc=rpcFactory(c.url!,c.key!);let info:{tenant?:string}|undefined;
+ async function backend(id:HeadquartersId){const c=validate(id),rpc=tenantRpc(rpcFactory(c.url!,c.key!),id);let info:{tenant?:string}|undefined;
   try{info=await rpc('lunch_tenant_info',{});}catch(error){if(id==='global')throw error;}
   if(info&&info.tenant!==id)throw new ApiError(503,'TENANT','연결된 DB의 본부 설정이 일치하지 않습니다.');
   if(id==='global'&&!info)throw new ApiError(503,'TENANT','Global DB 초기화가 필요합니다.');
@@ -29,7 +29,7 @@ export function createApplication({env,rpcFactory=supabaseRpc}:{env:Env;rpcFacto
   if(endpoint==='cron'){
    if(request.method!=='GET')return response({error:'허용되지 않은 메서드입니다.'},405);
    if(!env.CRON_SECRET||!secretEqual(request.headers.get('authorization')||'',`Bearer ${env.CRON_SECRET}`))throw new ApiError(401,'AUTH','인증이 필요합니다.');
-   const ids:HeadquartersId[]=['ax'];if(Object.keys(env).some(k=>k.startsWith('GLOBAL_')&&!!env[k]))ids.push('global');
+   const ids:HeadquartersId[]=['ax'];if(env.GLOBAL_INVITE_CODE||env.GLOBAL_ADMIN_SECRET)ids.push('global');
    const results=await Promise.all(ids.map(async id=>{
     let rpc:Rpc|undefined;
     try{const b=await backend(id);rpc=b.rpc;const result=await b.service.handle('cron',request);if(!result.ok)throw new ApiError(result.status,'JOB','자동 작업에 실패했습니다.');

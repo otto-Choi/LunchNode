@@ -6,7 +6,7 @@ import {createBackend} from '../lib/backend/service.ts';
 import {hashPin,digest} from '../lib/backend/security.ts';
 import {ROSTER} from '../lib/roster.ts';
 const db=databasePools();after(()=>db.close());
-const files=(await fs.readdir('supabase/migrations')).filter(f=>f.endsWith('.sql')).sort();
+const files=(await fs.readdir('supabase/migrations')).filter(f=>f.endsWith('.sql')&&f!=='20261023090100_global_tables.sql').sort();
 // Explicit test-only opt-in is checked before any destructive setup.
 await db.admin.query('drop schema public cascade; create schema public;');
 await db.admin.query(`do $$begin if not exists(select 1 from pg_roles where rolname='anon') then create role anon; end if; if not exists(select 1 from pg_roles where rolname='authenticated') then create role authenticated; end if; if not exists(select 1 from pg_roles where rolname='service_role') then create role service_role; end if; end$$;`);
@@ -118,18 +118,21 @@ test('operator rematch replaces provisional groups atomically, checks DB cutoff 
  }finally{await db.admin.query(original);await db.admin.query('drop table lunch_rematch_test_clock');}
 });
 
-test('separate Global installation preserves AX accounts and state, uses the corrected roster, and supports first-day matching',async()=>{
+test('same-database Global tables preserve all AX data and isolate auth, choices, matching and operator writes',async()=>{
  const axUsers=(await db.admin.query('select id,pin_hash from lunch_users order by id')).rows;
  const axState=(await db.admin.query('select data,version from lunch_state')).rows;
- const dbName='lunch_global_isolation_test';await db.admin.query(`create database ${dbName}`);
- const url=new URL(process.env.DATABASE_URL);url.pathname='/'+dbName;const global=databasePools(url.toString());
+ const {tenantRpc}=await import('../lib/backend/tenant-rpc.ts');
+ const global={admin:db.admin,rpc:tenantRpc(db.rpc,'global')};
+ const axTables=['lunch_roster','lunch_users','lunch_sessions','lunch_state','lunch_auth_buckets','lunch_settings','lunch_admin_events','lunch_job_runs'];
+ const snapshotAX=async()=>Object.fromEntries(await Promise.all(axTables.map(async table=>[table,(await db.admin.query(`select coalesce(jsonb_agg(t order by to_jsonb(t)::text),'[]') as data from public.${table} t`)).rows[0].data])));
+ const beforeAX=await snapshotAX();
  try{
   // Freeze only this disposable installation to test an opening morning, independent of CI's date.
   const installer=(await fs.readFile('supabase/global-schema.sql','utf8')).replaceAll('clock_timestamp()',"'2026-10-23T09:00:00+09:00'::timestamptz");
   await global.admin.query(installer);
   const info=await global.rpc('lunch_tenant_info',{});assert.equal(info.tenant,'global');assert.equal(info.startDate,'2026-10-23');assert.equal(info.endDate,'2026-11-30');
   const {GLOBAL_ROSTER}=await import('../lib/backend/global-roster.ts');const {tenantConfig}=await import('../lib/backend/tenant-config.ts');
-  const people=(await global.admin.query('select id,name,class_name as "className",default_status as "defaultStatus" from lunch_roster order by id')).rows;assert.deepEqual(people,GLOBAL_ROSTER);
+  const people=(await global.admin.query('select id,name,class_name as "className",default_status as "defaultStatus" from global_lunch_roster order by id')).rows;assert.deepEqual(people,GLOBAL_ROSTER);
   assert.equal(people.filter(p=>p.className==='IOA').length,12);assert.ok(people.every(p=>p.defaultStatus==='unset'));assert.deepEqual(tenantConfig('global').policy.genderByName,{});
   const backend=createBackend({rpc:global.rpc,tenantId:'global',roster:GLOBAL_ROSTER,policy:tenantConfig('global').policy,inviteCode:'global-only',adminSecret:'global-operator-key-at-least-32-chars',cronSecret:'global-cron',secureCookies:false});
   const callGlobal=(endpoint,body,cookie='')=>backend.handle(endpoint,req(endpoint,body,cookie));
@@ -138,12 +141,29 @@ test('separate Global installation preserves AX accounts and state, uses the cor
   const attendees=[...GLOBAL_ROSTER.slice(0,4),...GLOBAL_ROSTER.slice(12,16)];
   for(const p of attendees)if(p.name!=='박인홍'){const r=await callGlobal('auth',{action:'register',name:p.name,pin:'123456',invite:'global-only'});assert.equal(r.status,200,await r.clone().text());}
   const choices=Object.fromEntries(attendees.map(p=>[p.id,{status:'join',meal:'any'}]));
-  await global.admin.query("update lunch_state set data=jsonb_set(data,'{choices}', $1::jsonb),version=version+1 where id=1",[JSON.stringify({'2026-10-23':choices})]);
+  await global.admin.query("update global_lunch_state set data=jsonb_set(data,'{choices}', $1::jsonb),version=version+1 where id=1",[JSON.stringify({'2026-10-23':choices})]);
   const initial=await callGlobal('admin',{action:'initial_match',date:'2026-10-23',key:'global-operator-key-at-least-32-chars'},cookie);assert.equal(initial.status,200,await initial.clone().text());
-  const state=(await global.admin.query('select data from lunch_state')).rows[0].data;assert.equal(state.days['2026-10-23'].phase,'matched');assert.equal(state.days['2026-10-23'].groups.length,2);assert.deepEqual(state.days['2026-10-23'].groups.flatMap(g=>g.members.map(p=>p.id)).sort(),attendees.map(p=>p.id).sort());assert.ok(state.days['2026-10-23'].groups.every(g=>g.members.length===4&&g.members.filter(p=>p.className==='IOA').length===2));
+  const state=(await global.admin.query('select data from global_lunch_state')).rows[0].data;assert.equal(state.days['2026-10-23'].phase,'matched');assert.equal(state.days['2026-10-23'].groups.length,2);assert.deepEqual(state.days['2026-10-23'].groups.flatMap(g=>g.members.map(p=>p.id)).sort(),attendees.map(p=>p.id).sort());assert.ok(state.days['2026-10-23'].groups.every(g=>g.members.length===4&&g.members.filter(p=>p.className==='IOA').length===2));
   assert.equal((await callGlobal('admin',{action:'initial_match',date:'2026-10-23',key:'global-operator-key-at-least-32-chars'},cookie)).status,409);
   await global.rpc('lunch_record_job',{p_ok:true,p_code:null});const status=await global.rpc('lunch_system_status',{});assert.equal(status.lastOk,true);assert.ok(status.lastSuccessAt);assert.equal(status.registered,8);
-  await assert.rejects(global.admin.query(installer),/empty LunchNode database/);await global.admin.query('rollback');
+  const {createApplication}=await import('../lib/backend/application.ts');
+  const application=createApplication({env:{SUPABASE_URL:'https://shared.test',SUPABASE_SERVICE_ROLE_KEY:'shared-key',INVITE_CODE:'ax-only',ADMIN_SECRET:'ax-operator-key-at-least-32-characters',GLOBAL_INVITE_CODE:'global-only',GLOBAL_ADMIN_SECRET:'global-operator-key-at-least-32-chars'},rpcFactory:(url,key)=>{assert.equal(url,'https://shared.test');assert.equal(key,'shared-key');return db.rpc;}});
+  const appCall=(endpoint,tenant,body,cookieValue)=>{const request=req(endpoint,body,cookieValue);request.headers.set('x-lunch-tenant',tenant);return application.handle(endpoint,request);};
+  assert.equal((await appCall('state','ax',undefined,cookie)).status,401);
+  assert.equal((await appCall('state','ax',undefined,cookie.replace('lunch_session_global=','lunch_session='))).status,401);
+  assert.equal((await appCall('state','global',undefined,tokens[1].replace('lunch_session=','lunch_session_global='))).status,401);
+  const globalState=await appCall('state','global',undefined,cookie);assert.equal(globalState.status,200,await globalState.clone().text());assert.equal((await globalState.json()).people.length,20);
+  assert.equal((await appCall('admin','global',{action:'status',key:'ax-operator-key-at-least-32-characters'},cookie)).status,403);
+  const savedChoice=await appCall('state','global',{dates:['2026-10-23'],choice:{status:'join',meal:'outside'}},cookie);assert.equal(savedChoice.status,200,await savedChoice.clone().text());
+  const snapshotGlobal=async()=>Object.fromEntries(await Promise.all(axTables.map(async table=>[table,(await db.admin.query(`select coalesce(jsonb_agg(t order by to_jsonb(t)::text),'[]') as data from public.global_${table} t`)).rows[0].data])));
+  const savedGlobal=await snapshotGlobal();
+  await global.admin.query(installer);assert.deepEqual(await snapshotGlobal(),savedGlobal);
+  assert.deepEqual(await snapshotAX(),beforeAX);
+  // Browser roles cannot access either namespace; service calls cannot accidentally accept the other session.
+  for(const prefix of ['', 'global_']){const permissions=(await db.admin.query(`select has_table_privilege('anon','${prefix}lunch_users','select') as a,has_table_privilege('authenticated','${prefix}lunch_state','select') as b,has_function_privilege('anon','${prefix}lunch_snapshot(text,boolean)','execute') as c`)).rows[0];assert.deepEqual(permissions,{a:false,b:false,c:false});}
+  // The one-paste upgrade is also safe after both headquarters already have accounts and history.
+  await db.admin.query(await fs.readFile('supabase/upgrade-shared-db.sql','utf8'));
+  assert.deepEqual(await snapshotAX(),beforeAX);assert.deepEqual(await snapshotGlobal(),savedGlobal);
   assert.deepEqual((await db.admin.query('select id,pin_hash from lunch_users order by id')).rows,axUsers);assert.deepEqual((await db.admin.query('select data,version from lunch_state')).rows,axState);
- }finally{await global.close();await db.admin.query(`drop database ${dbName}`);}
+ }finally{/* Both headquarters intentionally use the same pool and database. */}
 });

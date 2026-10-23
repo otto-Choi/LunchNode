@@ -1,36 +1,16 @@
-# DB 생성 및 업데이트
+# Supabase DB 설정
 
-Supabase 키를 Vercel의 서버 환경변수에만 저장합니다. 브라우저는 DB에 직접 접근하지 않습니다.
+현재 구조는 **프로젝트 하나, 본부별 테이블**입니다.
 
-## 새 DB: 아래 둘 중 한 가지만 사용
+- AX Node: `public.lunch_*`
+- Global: `public.global_lunch_*`
 
-1. 수동: Supabase SQL Editor에서 `supabase/schema.sql` 전체를 한 번 실행합니다.
-2. GitHub 통합 또는 CLI: `supabase/migrations/`의 14자리 번호 순서대로 실행합니다. `config.toml`이 포함되어 있습니다.
+기존 AX 프로젝트에는 `upgrade-shared-db.sql` 전체를 SQL Editor에서 실행합니다. 계정·PIN·신청·확정 기록을 유지하면서 필요한 선행 함수와 Global 테이블을 추가합니다. 실행 순서와 확인 쿼리는 [설정 안내](../HEADQUARTERS_SETUP.md)를 참고하세요.
 
-스키마 SQL과 마이그레이션을 새 DB에 중복 적용할 필요는 없습니다. 기존 DB에서도 새 마이그레이션은 계정·PIN·기록을 삭제하지 않습니다. 허용 명단 밖 계정이 있다면 해당 마이그레이션이 중단됩니다. 데이터를 확인한 뒤 처리해야 하며 자동 삭제하지 않습니다.
+새 프로젝트를 만드는 경우 `schema.sql` 전체 또는 `migrations/`의 번호 순서로 적용합니다. GitHub/CLI 자동 migration에는 Global 테이블 추가도 포함됩니다. 데이터가 있는 DB에서 reset을 실행하지 않습니다.
 
-## 기존 초안 DB
+`global-schema.sql`은 현재 AX와 같은 DB에 Global 테이블만 추가하는 파일입니다. `20261023090000_headquarters_operations.sql`까지 적용된 프로젝트에서 사용할 수 있습니다. 일반 사용자는 선행 업데이트를 함께 포함한 `upgrade-shared-db.sql`을 사용하면 됩니다.
 
-번호가 다른 세 마이그레이션을 순서대로 적용하거나, 현재 `schema.sql`을 실행할 수 있습니다. 이전 파일 `20261021_fixed_roster.sql`은 같은 날짜 접두사가 중복되는 문제가 있어 새 14자리 마이그레이션으로 교체했습니다. 이미 Supabase CLI로 이전 버전을 배포했다면 `supabase migration list`로 기록을 먼저 확인하고, 수동 적용한 스키마의 이력을 `supabase migration repair`로 맞추세요. 데이터가 있는 DB에서 reset을 실행하지 않습니다.
+운영 기간은 `lunch_settings`, `global_lunch_settings`가 각각 관리합니다. Vercel의 날짜 환경변수로 DB 일정이 변경되지는 않습니다. 기본 종료일은 2026-11-30입니다.
 
-## 운영 기간
-
-`lunch_settings`가 DB 기준 운영 기간입니다. 초기값은 2026-10-22 ~ 2026-11-03입니다. Vercel의 OPERATION_START/END만 바꾸어도 운영 DB가 바뀌지는 않습니다. 기간은 다음처럼 변경합니다.
-
-```sql
-update public.lunch_settings
-set start_date='2026-10-22',end_date='2026-11-03'
-where id=1;
-```
-
-20명은 `lunch_roster`에 저장합니다. 12월 입사자 3명은 기본 불참이며 명시적 참석으로 변경할 수 있습니다. 미등록자도 명단과 기본 신청에 포함되지만 PIN은 최초 등록 때 생성됩니다. 이름과 소속은 직접 수정할 수 없습니다.
-
-## 트랜잭션 및 권한
-
-등록+세션 생성, PIN 변경+모든 세션 폐기, 버전 비교+신청 저장은 각각 DB 함수 안에서 원자적으로 실행합니다. 서버에서 본 마감 전 시각과 무관하게 DB가 잠금을 얻은 뒤 한국 시각 11시 마감을 재확인합니다. 이미 확정된 조 스냅샷은 cron도 덮어쓸 수 없습니다.
-
-anon/authenticated는 테이블과 RPC에 접근할 수 없으며 service_role도 지정된 서버 전용 RPC만 실행합니다. PIN은 salted scrypt 해시, 세션은 토큰의 SHA-256만 저장합니다. 실제 토큰은 HttpOnly 쿠키로 전송합니다.
-
-운영자 도구 추가 시 `migrations/20261021090300_admin_tools.sql`을 적용하고 Vercel에 별도 32자 이상 `ADMIN_SECRET`을 설정합니다. 자세한 이용법은 루트 README를 참고하세요.
-
-운영자 전체 재편성 추가 시 `migrations/20261021090400_admin_rematch.sql`을 추가 적용합니다. 신규 DB는 최신 `schema.sql`에 포함되어 있습니다.
+브라우저 역할에는 테이블/서버 RPC 접근 권한이 없습니다. 서버는 같은 service_role 키로 본부별 함수만 호출하며, 본부를 변경해도 다른 본부 세션은 사용할 수 없습니다. PIN은 scrypt 해시, 세션 토큰은 SHA-256으로 저장합니다. DB 마감 시각과 확정 조 보존 조건은 각 본부 함수에서 동일하게 적용합니다.
