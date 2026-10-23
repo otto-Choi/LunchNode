@@ -1,4 +1,4 @@
-import { createHash, randomBytes, scrypt, timingSafeEqual } from 'node:crypto';
+import { createHash, randomBytes, scrypt, timingSafeEqual, createHmac } from 'node:crypto';
 export const SESSION_COOKIE = 'lunch_session';
 export const SESSION_SECONDS = 21 * 86400;
 export class ApiError extends Error {
@@ -21,13 +21,13 @@ export async function verifyPin(pin: string, stored: string | null) {
   return valid && timingSafeEqual(actual,Buffer.from(key,'hex'));
 }
 export const newToken = () => randomBytes(32).toString('hex');
-export function tokenFrom(request: Request) {
+export function tokenFrom(request: Request,cookieName=SESSION_COOKIE) {
   const pairs=(request.headers.get('cookie')||'').split(';').map(p=>p.trim());
-  const value=pairs.find(p=>p.startsWith(SESSION_COOKIE+'='))?.slice(SESSION_COOKIE.length+1)||'';
+  const value=pairs.find(p=>p.startsWith(cookieName+'='))?.slice(cookieName.length+1)||'';
   return /^[0-9a-f]{64}$/.test(value)?value:'';
 }
-export function sessionCookie(token: string, secure: boolean) {
-  return `${SESSION_COOKIE}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${token?SESSION_SECONDS:0}${secure?'; Secure':''}`;
+export function sessionCookie(token: string, secure: boolean,cookieName=SESSION_COOKIE) {
+  return `${cookieName}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${token?SESSION_SECONDS:0}${secure?'; Secure':''}`;
 }
 export function checkOrigin(request: Request, configuredOrigin?: string) {
   const origin=request.headers.get('origin');
@@ -54,4 +54,14 @@ export function response(body: unknown, status=200, cookie?: string) {
 export function errorResponse(error: unknown) {
   if(error instanceof ApiError)return response({error:error.message,code:error.code},error.status);
   return response({error:'요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.',code:'INTERNAL'},500);
+}
+
+export function rosterGateCookie(value:string,secure:boolean,name:string){return `${name}=${value}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${value?7*86400:0}${secure?'; Secure':''}`;}
+export function makeRosterGate(tenant:string,secret:string,now=Date.now()){
+ const expires=String(Math.floor(now/1000)+7*86400),signature=createHmac('sha256',secret).update(`${tenant}:${expires}`).digest('hex');return `${expires}.${signature}`;
+}
+export function hasRosterGate(request:Request,name:string,tenant:string,secret:string){
+ if(!secret)return false;const raw=(request.headers.get('cookie')||'').split(';').map(s=>s.trim()).find(s=>s.startsWith(name+'='))?.slice(name.length+1)||'';
+ const [expires,signature]=raw.split('.');if(!/^\d{10}$/.test(expires||'')||!signature||Number(expires)<=Date.now()/1000||Number(expires)>Date.now()/1000+7*86400+60)return false;
+ return secretEqual(signature,createHmac('sha256',secret).update(`${tenant}:${expires}`).digest('hex'));
 }

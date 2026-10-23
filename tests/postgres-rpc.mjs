@@ -1,9 +1,9 @@
 import pg from 'pg';
 import { ApiError } from '../lib/backend/security.ts';
-export function databasePools(){
+export function databasePools(connectionString=process.env.DATABASE_URL){
  if(!process.env.DATABASE_URL||process.env.ALLOW_DATABASE_RESET!=='1')throw new Error('Use a disposable test DB with DATABASE_URL and ALLOW_DATABASE_RESET=1.');
- const admin=new pg.Pool({connectionString:process.env.DATABASE_URL,max:24});
- const service=new pg.Pool({connectionString:process.env.DATABASE_URL,max:24,options:'-c role=service_role'});
+ const admin=new pg.Pool({connectionString,max:24});
+ const service=new pg.Pool({connectionString,max:24,options:'-c role=service_role'});
  const rpc=async(name,args)=>{
   if(!/^lunch_[a-z_]+$/.test(name))throw new Error('Invalid function');
   const keys=Object.keys(args);if(keys.some(k=>!/^p_[a-z_]+$/.test(k)))throw new Error('Invalid argument');

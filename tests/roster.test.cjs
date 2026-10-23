@@ -67,8 +67,8 @@ test('preview renders the real roster, all three defaults, saves participation a
  assert.ok(!output.innerHTML.includes('LUNCH TOGETHER'));assert.ok(!output.innerHTML.includes('함께 먹는 즐거움'));assert.ok(!output.innerHTML.includes('새로운 대화'));
 });
 
-test('operation period is exactly the nine requested weekdays',()=>{
- assert.deepEqual(demoDates,['2026-10-22','2026-10-23','2026-10-26','2026-10-27','2026-10-28','2026-10-29','2026-10-30','2026-11-02','2026-11-03']);
+test('operation period extends through November, preserving archived preview',()=>{
+ assert.equal(demoDates[0],'2026-10-22');assert.equal(demoDates.at(-1),'2026-11-30');assert.equal(demoDates.length,28);assert.ok(demoDates.every(d=>![0,6].includes(new Date(d+'T12:00:00Z').getUTCDay())));
  const html=fs.readFileSync(path.join(root,'ui-preview-v6.html'),'utf8');
  const initial=html.split('<script>')[0];
  assert.ok(initial.includes('2026년 10–11월'));assert.ok(initial.includes('10.22 — 11.03'));

@@ -117,3 +117,28 @@ test('operator rematch replaces provisional groups atomically, checks DB cutoff 
   await assert.rejects(db.rpc('lunch_admin_rematch',args),e=>e.code==='LN409');
  }finally{await db.admin.query(original);await db.admin.query('drop table lunch_rematch_test_clock');}
 });
+
+test('separate Global installation preserves AX accounts and state, uses the corrected roster, and supports first-day matching',async()=>{
+ const axUsers=(await db.admin.query('select id,pin_hash from lunch_users order by id')).rows;
+ const axState=(await db.admin.query('select data,version from lunch_state')).rows;
+ const dbName='lunch_global_isolation_test';await db.admin.query(`create database ${dbName}`);
+ const url=new URL(process.env.DATABASE_URL);url.pathname='/'+dbName;const global=databasePools(url.toString());
+ try{
+  // Freeze only this disposable installation to test an opening morning, independent of CI's date.
+  const installer=(await fs.readFile('supabase/global-schema.sql','utf8')).replaceAll('clock_timestamp()',"'2026-10-23T09:00:00+09:00'::timestamptz");
+  await global.admin.query(installer);
+  const info=await global.rpc('lunch_tenant_info',{});assert.equal(info.tenant,'global');assert.equal(info.startDate,'2026-10-23');assert.equal(info.endDate,'2026-11-30');
+  const {GLOBAL_ROSTER}=await import('../lib/backend/global-roster.ts');const {tenantConfig}=await import('../lib/backend/tenant-config.ts');
+  const people=(await global.admin.query('select id,name,class_name as "className",default_status as "defaultStatus" from lunch_roster order by id')).rows;assert.deepEqual(people,GLOBAL_ROSTER);
+  assert.equal(people.filter(p=>p.className==='IOA').length,12);assert.ok(people.every(p=>p.defaultStatus==='unset'));assert.deepEqual(tenantConfig('global').policy.genderByName,{});
+  const backend=createBackend({rpc:global.rpc,tenantId:'global',roster:GLOBAL_ROSTER,policy:tenantConfig('global').policy,inviteCode:'global-only',adminSecret:'global-operator-key-at-least-32-chars',cronSecret:'global-cron',secureCookies:false});
+  const callGlobal=(endpoint,body,cookie='')=>backend.handle(endpoint,req(endpoint,body,cookie));
+  const registered=await callGlobal('auth',{action:'register',name:'박인홍',pin:'123456',invite:'global-only'});assert.equal(registered.status,200,await registered.clone().text());const cookie=registered.headers.get('set-cookie').split(';')[0];
+  assert.match(cookie,/^lunch_session_global=/);assert.equal((await callGlobal('auth',{action:'register',name:'최철원',pin:'123456',invite:'global-only'})).status,400);
+  const initial=await callGlobal('admin',{action:'initial_match',date:'2026-10-23',key:'global-operator-key-at-least-32-chars'},cookie);assert.equal(initial.status,200,await initial.clone().text());
+  const state=(await global.admin.query('select data from lunch_state')).rows[0].data;assert.equal(state.days['2026-10-23'].phase,'matched');assert.deepEqual(state.days['2026-10-23'].groups,[]);
+  await global.rpc('lunch_record_job',{p_ok:true,p_code:null});const status=await global.rpc('lunch_system_status',{});assert.equal(status.lastOk,true);assert.ok(status.lastSuccessAt);assert.equal(status.registered,1);
+  await assert.rejects(global.admin.query(installer),/empty LunchNode database/);await global.admin.query('rollback');
+  assert.deepEqual((await db.admin.query('select id,pin_hash from lunch_users order by id')).rows,axUsers);assert.deepEqual((await db.admin.query('select data,version from lunch_state')).rows,axState);
+ }finally{await global.close();await db.admin.query(`drop database ${dbName}`);}
+});
