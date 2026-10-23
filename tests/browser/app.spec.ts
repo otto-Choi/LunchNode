@@ -108,3 +108,21 @@ test('result date stays on today at lunchtime and switches at 13:00 while Decemb
  await select.selectOption('2026-10-26');await page.clock.fastForward(31000);await expect(select).toHaveValue('2026-10-26');
  await page.getByRole('button',{name:'내 점심 일정',exact:false}).click();await page.getByRole('button',{name:'조 편성 결과',exact:true}).click();await expect(select).toHaveValue('2026-10-23');
 });
+
+test('Global invite gate, headquarters headers, contact link and monthly desktop calendar work together',async({page},info)=>{
+ const person={id:'global-p1',name:'박인홍',className:'IOA',defaultStatus:'unset'};let authenticated=false;const seen:string[]=[];
+ const dates:string[]=[];for(let d=new Date('2026-10-22T12:00:00Z');d<=new Date('2026-11-30T12:00:00Z');d.setUTCDate(d.getUTCDate()+1))if(![0,6].includes(d.getUTCDay()))dates.push(d.toISOString().slice(0,10));
+ await page.route('**/api/tenants',route=>route.fulfill({json:{headquarters:[{id:'ax',label:'AX Node',available:true},{id:'global',label:'Global',available:true}]}}));
+ await page.route('**/api/state',route=>{seen.push(route.request().headers()['x-lunch-tenant']);return route.fulfill(authenticated?{json:{demo:false,user:person,people:[person],dates,now:'2026-10-23T10:00:00+09:00',state:{choices:{},days:{},events:[]}}}:{status:401,json:{error:'로그인이 필요합니다.'}});});
+ await page.route('**/api/auth',async route=>{const body=route.request().postDataJSON(),hq=route.request().headers()['x-lunch-tenant'];seen.push(hq);if(body.action==='roster')return route.fulfill({status:403,json:{error:'초대 코드가 필요합니다.'}});if(body.action==='unlock'){expect(hq).toBe('global');return route.fulfill(body.invite==='global-code'?{json:{people:[person]}}:{status:403,json:{error:'초대 코드가 올바르지 않습니다.'}});}expect(hq).toBe('global');authenticated=true;return route.fulfill({json:{ok:true}});});
+ await page.goto('/');await expect(page.getByLabel('이름',{exact:true})).toHaveCount(0);await page.getByLabel('본부',{exact:true}).selectOption('global');
+ await expect(page.getByLabel('이름',{exact:true})).toHaveCount(0);await page.getByLabel('초대 코드').fill('global-code');await page.getByRole('button',{name:'초대 코드 확인',exact:true}).click();await page.getByLabel('이름',{exact:true}).selectOption('박인홍');await page.getByLabel('숫자 6자리 PIN').fill('123456');await page.getByRole('button',{name:'로그인',exact:true}).click();
+ await expect(page.locator('.breadcrumb')).toContainText('Global');expect(seen.at(-1)).toBe('global');
+ const contact=page.getByRole('link',{name:'문의하기 · cheolwon.choi@pwc.com'});await expect(contact).toHaveAttribute('href',/^mailto:cheolwon\.choi@pwc\.com\?/);expect(decodeURIComponent(await contact.getAttribute('href')||'')).toContain('Global');
+ if(info.project.name==='desktop'){
+  await expect(page.locator('.calendar-weekdays span')).toHaveCount(7);await expect(page.locator('.calendar-month strong')).toHaveText('2026년 10월');await expect(page.locator('.date-cell.unavailable')).not.toHaveCount(0);
+  await page.getByRole('button',{name:'다음 달',exact:true}).click();await expect(page.locator('.calendar-month strong')).toHaveText('2026년 11월');await page.getByRole('button',{name:'11월 2일 선택',exact:true}).click();await expect(page.locator('.editor-heading')).toContainText('11월 2일');
+  await page.getByRole('button',{name:'이전 달',exact:true}).click();await expect(page.locator('.calendar-month strong')).toHaveText('2026년 10월');
+ }else{for(const card of await page.locator('.date-cell.past-date').all())await expect(card).toBeHidden();await expect(page.getByRole('button',{name:'11월 30일 선택',exact:true})).toBeVisible();}
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
+});

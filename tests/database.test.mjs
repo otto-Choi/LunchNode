@@ -135,9 +135,14 @@ test('separate Global installation preserves AX accounts and state, uses the cor
   const callGlobal=(endpoint,body,cookie='')=>backend.handle(endpoint,req(endpoint,body,cookie));
   const registered=await callGlobal('auth',{action:'register',name:'박인홍',pin:'123456',invite:'global-only'});assert.equal(registered.status,200,await registered.clone().text());const cookie=registered.headers.get('set-cookie').split(';')[0];
   assert.match(cookie,/^lunch_session_global=/);assert.equal((await callGlobal('auth',{action:'register',name:'최철원',pin:'123456',invite:'global-only'})).status,400);
+  const attendees=[...GLOBAL_ROSTER.slice(0,4),...GLOBAL_ROSTER.slice(12,16)];
+  for(const p of attendees)if(p.name!=='박인홍'){const r=await callGlobal('auth',{action:'register',name:p.name,pin:'123456',invite:'global-only'});assert.equal(r.status,200,await r.clone().text());}
+  const choices=Object.fromEntries(attendees.map(p=>[p.id,{status:'join',meal:'any'}]));
+  await global.admin.query("update lunch_state set data=jsonb_set(data,'{choices}', $1::jsonb),version=version+1 where id=1",[JSON.stringify({'2026-10-23':choices})]);
   const initial=await callGlobal('admin',{action:'initial_match',date:'2026-10-23',key:'global-operator-key-at-least-32-chars'},cookie);assert.equal(initial.status,200,await initial.clone().text());
-  const state=(await global.admin.query('select data from lunch_state')).rows[0].data;assert.equal(state.days['2026-10-23'].phase,'matched');assert.deepEqual(state.days['2026-10-23'].groups,[]);
-  await global.rpc('lunch_record_job',{p_ok:true,p_code:null});const status=await global.rpc('lunch_system_status',{});assert.equal(status.lastOk,true);assert.ok(status.lastSuccessAt);assert.equal(status.registered,1);
+  const state=(await global.admin.query('select data from lunch_state')).rows[0].data;assert.equal(state.days['2026-10-23'].phase,'matched');assert.equal(state.days['2026-10-23'].groups.length,2);assert.deepEqual(state.days['2026-10-23'].groups.flatMap(g=>g.members.map(p=>p.id)).sort(),attendees.map(p=>p.id).sort());assert.ok(state.days['2026-10-23'].groups.every(g=>g.members.length===4&&g.members.filter(p=>p.className==='IOA').length===2));
+  assert.equal((await callGlobal('admin',{action:'initial_match',date:'2026-10-23',key:'global-operator-key-at-least-32-chars'},cookie)).status,409);
+  await global.rpc('lunch_record_job',{p_ok:true,p_code:null});const status=await global.rpc('lunch_system_status',{});assert.equal(status.lastOk,true);assert.ok(status.lastSuccessAt);assert.equal(status.registered,8);
   await assert.rejects(global.admin.query(installer),/empty LunchNode database/);await global.admin.query('rollback');
   assert.deepEqual((await db.admin.query('select id,pin_hash from lunch_users order by id')).rows,axUsers);assert.deepEqual((await db.admin.query('select data,version from lunch_state')).rows,axState);
  }finally{await global.close();await db.admin.query(`drop database ${dbName}`);}
