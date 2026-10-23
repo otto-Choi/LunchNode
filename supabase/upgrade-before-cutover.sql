@@ -277,6 +277,7 @@ begin
  for fn in
   select oid from pg_proc where pronamespace='public'::regnamespace
   and starts_with(proname,'ax_lunch_')
+  order by case when proname='ax_lunch_user_json' then 0 else 1 end,oid
  loop
   execute replace(
    replace(pg_get_functiondef(fn.oid),'ax_lunch_','global_lunch_'),
