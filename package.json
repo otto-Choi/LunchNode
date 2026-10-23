@@ -29,5 +29,8 @@
   "engines": {
     "node": "24.x"
   },
-  "type": "module"
+  "type": "module",
+  "overrides": {
+    "postcss": "^8.5.23"
+  }
 }
