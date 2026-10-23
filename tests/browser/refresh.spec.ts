@@ -5,12 +5,13 @@ const payload=(status='unset',meal='any')=>({demo:false,user:person,people:[pers
 const focus=async(page:import('@playwright/test').Page)=>page.evaluate(()=>window.dispatchEvent(new Event('focus')));
 
 test('background refresh preserves unsaved attendance and menu while date changes reset the draft',async({page})=>{
- let requests=0;await page.route('**/api/state',route=>{requests++;return route.fulfill({json:payload()});});
+ let requests=0;await page.route('**/api/state',route=>{requests++;return route.fulfill({json:{...payload(),people:requests>1?[person,{id:'p2',name:'김서영',className:'4반'}]:[person]}});});
  await page.goto('/');await expect(page.locator('.schedule-editor')).toBeVisible();
  await page.getByRole('button',{name:'외식선호',exact:true}).click();
  const attendance=page.getByRole('group',{name:'참석 여부'});
  await attendance.getByRole('button',{name:'불참',exact:true}).click();
  await focus(page);await expect.poll(()=>requests).toBeGreaterThanOrEqual(2);
+ await expect(page.locator('.stat-card').filter({hasText:'전체 인원'}).locator('strong')).toHaveText('2명');
  await expect(page.getByRole('button',{name:'외식선호',exact:true})).toHaveAttribute('aria-pressed','true');
  await expect(attendance.getByRole('button',{name:'불참',exact:true})).toHaveAttribute('aria-pressed','true');
  await page.getByRole('button',{name:'10월 26일 선택',exact:true}).click();

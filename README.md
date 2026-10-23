@@ -9,10 +9,10 @@
 
 ## 개발
 
-Node.js 24가 필요합니다.
+Node.js 24가 필요합니다. 의존성 버전은 `package-lock.json`으로 고정하며 설치는 `npm ci`를 사용합니다.
 
 ```sh
-npm install
+npm ci
 cp .env.example .env.local
 npm run dev
 ```
@@ -34,7 +34,7 @@ npm run build
 | `lib/domain.ts` | 참석·취소·최초 편성·추가 참여·재편성·확정 로직 |
 | `lib/backend/` | 인증, 본부 분리, RPC, 운영자 권한, 서버 설정 |
 | `lib/client/` | 브라우저 API 요청과 탭별 본부 선택 |
-| `lib/roster.ts`, `lib/global-roster.ts` | 본부별 고정 명단 |
+| `lib/roster.ts`, `lib/backend/global-roster.ts` | 본부별 고정 명단 |
 | `public/` | 서비스 로고 |
 | `supabase/` | 설치·전환 SQL과 기존 마이그레이션 이력 |
 | `scripts/` | SQL 및 전환 문서 생성 스크립트 |
@@ -92,6 +92,7 @@ python scripts/build-before-cutover.py
 - 일반 추가 참여·취소는 기존 조원의 배정을 유지합니다. 운영자 전체 재편성은 당일 11시 전, 최초 편성 후 가능합니다.
 - 최종 확정된 과거 조만 만남 기록에 사용합니다. 교체된 임시 조는 누적하지 않습니다.
 - 참석 인원·메뉴 조건과 제한된 탐색량 때문에 모든 경우의 최적 조합을 보장하지는 않습니다. 참석자는 모두 배정합니다.
+- PC 월 달력은 일요일부터 시작하며 토·일은 내용 없는 좁은 칸으로 표시합니다. 날짜 카드 높이를 줄이고, 모바일은 앞으로의 날짜와 44px 참석·불참 버튼을 유지합니다.
 - 조 결과의 기본 날짜는 당일 **13:00**에 다음 운영일로 바뀝니다.
 
 `vercel.json`은 UTC 기준 13:00(일~목), 02:00(월~금)에 `/api/cron`을 호출합니다. Vercel이 `Authorization: Bearer <CRON_SECRET>`을 전송해야 합니다. 실제 작업은 각 본부의 운영일·시각을 다시 검사합니다. 예약 작업이 늦거나 누락되면 상태 조회와 운영자 복구에서도 지난 작업을 보완합니다. 예약 호출의 정확한 실행 시각과 플랫폼 이용 조건은 Vercel 운영 환경에서 확인해야 합니다.
