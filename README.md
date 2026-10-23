@@ -1,6 +1,8 @@
 # LunchNode · 런치노드
 
-20명 전용 점심 신청·조 편성 앱입니다. Next.js 15 / React 19, Supabase PostgreSQL, Vercel을 사용합니다.
+AX Node와 Global의 본부별 점심 신청·조 편성 앱입니다. 각 본부는 별도 Supabase 프로젝트에 연결합니다. Next.js 15 / React 19, Supabase PostgreSQL, Vercel을 사용합니다.
+
+기존 AX 서비스를 유지하면서 Global을 추가하려면 [본부 추가 설정](HEADQUARTERS_SETUP.md)을 먼저 확인하세요.
 
 ## 실행
 
@@ -16,27 +18,28 @@ npm run dev
 
 ## Supabase / Vercel 설정
 
-1. `supabase/README.md`를 따라 DB를 만듭니다. 새 DB는 `supabase/schema.sql` 전체 실행 또는 GitHub 통합의 순차 마이그레이션 중 하나를 선택합니다.
+1. `supabase/README.md`를 따라 DB를 만듭니다. 새 AX DB는 `supabase/schema.sql` 전체 실행 또는 GitHub 통합의 순차 마이그레이션 중 하나를 선택합니다. Global은 `supabase/global-schema.sql`로 설치합니다.
 2. Vercel에서 저장소 루트 `./`, Next.js, Node.js 24를 선택합니다. 빌드/설치 명령은 기본값입니다.
 3. 서버 환경변수 `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `INVITE_CODE`, `CRON_SECRET`, `DEMO_MODE=false`를 설정합니다. 비밀값에 NEXT_PUBLIC_ 접두사를 붙이지 않습니다.
 4. `APP_ORIGIN`은 선택입니다. 지정한다면 배포 주소의 origin(예: https://lunchnode.example.com)을 넣습니다. 비우면 요청 URL의 origin과 비교합니다.
 5. 배포 후 `/api/health`가 200과 `{ "ok": true }`를 반환하는지 확인하고, 알려진 참가자 이름으로 최초 등록합니다. 초대 코드는 초대받은 사용자에게 운영자가 전달합니다.
 
-운영 날짜의 기준은 DB `lunch_settings`입니다. 최초 기간은 **2026-10-22 ~ 2026-11-03, 평일 9일**입니다. 로컬 데모 날짜는 `lib/operation.ts`로 별도 관리합니다.
+운영 날짜의 기준은 DB `lunch_settings`입니다. AX 기간은 업데이트 적용 후 **2026-10-22 ~ 2026-11-30, 평일 28일**입니다. Global 시작일은 설치 시각에 따라 정해집니다. 로컬 데모 날짜는 `lib/operation.ts`로 별도 관리합니다.
 
 ## API
 
 | 경로 | 메서드 | 용도 |
 |---|---|---|
 | `/api/auth` | GET | 현재 로그인 사용자 또는 null |
-| `/api/auth` | POST | action=register/login/logout |
+| `/api/auth` | POST | action=unlock/roster/register/login/logout |
+| `/api/tenants` | GET | 본부 목록과 설정 여부, 참가자 정보는 포함하지 않음 |
 | `/api/state` | GET | 전체 일정·조·본인 신청; 로그인 필요 |
 | `/api/state` | POST | dates 배열 + choice(status,meal); 본인 신청만 변경 |
 | `/api/profile` | POST | currentPin/newPin으로 PIN 변경 및 전체 세션 폐기 |
 | `/api/cron` | GET | Bearer CRON_SECRET으로 누락 편성·확정 처리 |
 | `/api/health` | GET | 비밀값을 노출하지 않는 DB/스키마 상태 확인 |
 
-POST는 같은 origin의 JSON만 받습니다. 미인증은 401, 잘못된 입력은 400, 다른 origin은 403, 마감·충돌은 409, 과도한 로그인은 429, DB 연결/설정 오류는 503입니다. 응답은 캐시하지 않습니다. 쿠키는 운영 환경에서 Secure·HttpOnly·SameSite=Lax이며 최대 21일입니다.
+본부별 요청은 `x-lunch-tenant: ax` 또는 `global`로 구분합니다. `/api/cron`은 공통 키로 두 본부를 독립 처리합니다. POST는 같은 origin의 JSON만 받습니다. 미인증은 401, 잘못된 입력은 400, 다른 origin은 403, 마감·충돌은 409, 과도한 로그인은 429, DB 연결/설정 오류는 503입니다. 응답은 캐시하지 않습니다. 쿠키는 운영 환경에서 Secure·HttpOnly·SameSite=Lax이며 최대 21일입니다.
 
 자동 편성은 전날 22시, 최종 확정은 당일 11시(Asia/Seoul)입니다. `vercel.json`의 UTC 예약 작업 두 개가 이를 실행합니다. 장애 복구를 위해 일반 상태 읽기/쓰기 요청도 누락된 작업을 보완합니다. cron이 여러 번 실행돼도 기존 조를 다시 섞지 않습니다. 늦은 최초 실행은 당시 저장된 신청으로 복구하므로 정상 시각 실행과 완전히 같은 결과를 보장하지 않습니다.
 
@@ -57,16 +60,7 @@ DB 통합 테스트는 **스키마를 삭제합니다**. 테스트 전용 DB에�
 
 ## 확인된 검증 결과
 
-[GitHub Actions](https://github.com/otto-Choi/LunchNode/actions/runs/39586447958)에서 타입 검사, 규칙/서버 21개, 실제 PostgreSQL 6개, 프로덕션 빌드, 데스크톱/모바일 브라우저 2개가 통과했습니다. 상세 상태는 `전달상태.txt`에 있습니다.
-
-실제 연결 완료 순서는 다음과 같습니다.
-
-1. Supabase SQL Editor에서 현재 `supabase/schema.sql` 전체를 실행합니다. GitHub 통합으로 순차 마이그레이션을 적용했다면 중복 실행할 필요는 없습니다.
-2. Vercel Production에 `.env.example`의 서버용 변수를 설정하고 `DEMO_MODE=false`로 둡니다.
-3. Vercel에서 최신 main을 Redeploy합니다.
-4. 실제 배포 주소 뒤에 `/api/health`를 붙여 `{ "ok": true }`를 확인합니다.
-5. 첫 화면에서 본인 이름을 선택하고 공통 초대 코드와 PIN으로 등록합니다. 참석·불참을 변경한 뒤 새로고침하여 저장을 확인합니다.
-6. Vercel의 Cron Jobs에서 등록된 두 예약 작업과 실행 로그를 확인합니다. 자동 DB 배포를 켜려면 Supabase의 migration 이력을 먼저 맞춥니다.
+[GitHub Actions](https://github.com/otto-Choi/LunchNode/actions/workflows/verify.yml)에서 타입 검사, 알고리즘·백엔드 단위 테스트, 실제 PostgreSQL DB 격리·데이터 보존 테스트, 프로덕션 빌드 및 PC/모바일 브라우저 테스트를 실행합니다. 현재 본부 추가 설정은 [HEADQUARTERS_SETUP.md](HEADQUARTERS_SETUP.md)를 따릅니다. 과거 `전달상태.txt`와 HTML 체험 파일은 이전 버전 기록입니다.
 
 
 ## 메뉴 선택
