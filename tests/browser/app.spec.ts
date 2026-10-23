@@ -137,5 +137,5 @@ test('Global registers and saves to its own tables through the shared Supabase c
  const date=payload.dates.find((d:string)=>new Date(payload.now)<new Date(d+'T11:00:00+09:00')),label=`${Number(date.slice(5,7))}월 ${Number(date.slice(8))}일`;
  const write=page.waitForResponse(r=>r.url().endsWith('/api/state')&&r.request().method()==='POST');await page.getByRole('button',{name:label+' 참석',exact:true}).click();const saved=await write;expect(saved.ok()).toBe(true);expect(saved.request().headers()['x-lunch-tenant']).toBe('global');
  await page.reload();await expect(page.locator('.breadcrumb')).toContainText('Global');await expect(page.locator('.date-cell.selected .status-label')).toHaveText('참석');
- const cookies=await page.context().cookies();expect(cookies.some(c=>c.name==='lunch_session_global')).toBe(true);expect(cookies.some(c=>c.name==='lunch_session')).toBe(false);
+ const cookies=await page.context().cookies();expect(cookies.some(c=>c.name==='global_lunch_session')).toBe(true);expect(cookies.some(c=>c.name==='ax_lunch_session')).toBe(false);
 });

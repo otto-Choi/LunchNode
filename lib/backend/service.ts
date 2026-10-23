@@ -5,9 +5,9 @@ import { ApiError, makeRosterGate, hasRosterGate, rosterGateCookie, checkOrigin,
 export type Rpc = <T=unknown>(name: string, args: Record<string,unknown>) => Promise<T>;
 export type Snapshot = { version:number; state:State; people:Person[]; dates:string[]; user:Person|null; now:string };
 type Credentials = { id:string; pin_hash:string; user:Person };
-type Options = { rpc:Rpc; inviteCode:string; cronSecret:string; adminSecret?:string; origin?:string; secureCookies:boolean; retryDelay?:()=>Promise<void>; roster?:Person[]; policy?:MatchingPolicy; tenantId?:string; requireRosterGate?:boolean };
+type Options = { rpc:Rpc; inviteCode:string; cronSecret:string; adminSecret?:string; origin?:string; secureCookies:boolean; retryDelay?:()=>Promise<void>; roster?:Person[]; policy?:MatchingPolicy; tenantId?:string; requireRosterGate?:boolean; cookieStyle?:'legacy'|'namespaced' };
 export function createBackend(options:Options) {
-  const {rpc}=options;const roster=options.roster||ROSTER,policy=options.policy||matchingPolicy,tenant=options.tenantId||'ax',cookieName=tenant==='ax'?'lunch_session':`lunch_session_${tenant}`,gateName=`lunch_roster_${tenant}`;
+  const {rpc}=options;const roster=options.roster||ROSTER,policy=options.policy||matchingPolicy,tenant=options.tenantId||'ax',cookieName=options.cookieStyle==='namespaced'?`${tenant}_lunch_session`:tenant==='ax'?'lunch_session':`lunch_session_${tenant}`,gateName=options.cookieStyle==='namespaced'?`${tenant}_lunch_roster`:`lunch_roster_${tenant}`;
   const member=(name:string)=>roster.find(p=>p.name===name.normalize('NFKC').trim());
   const hashToken=(token:string)=>digest(tenant==='ax'?token:`${tenant}:${token}`);
   const cookie=(token:string)=>sessionCookie(token,options.secureCookies,cookieName);

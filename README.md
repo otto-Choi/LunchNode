@@ -1,8 +1,8 @@
 # LunchNode · 런치노드
 
-AX Node와 Global의 본부별 점심 신청·조 편성 앱입니다. 같은 Supabase 프로젝트 안에서 AX는 `lunch_*`, Global은 `global_lunch_*` 테이블을 사용합니다. Next.js 15 / React 19, Supabase PostgreSQL, Vercel을 사용합니다.
+AX Node와 Global의 본부별 점심 신청·조 편성 앱입니다. 같은 Supabase 프로젝트 안에서 AX는 `ax_lunch_*`, Global은 `global_lunch_*` 테이블을 사용합니다. Next.js 15 / React 19, Supabase PostgreSQL, Vercel을 사용합니다.
 
-기존 AX 서비스를 유지하면서 Global을 추가하려면 [본부 추가 설정](HEADQUARTERS_SETUP.md)을 먼저 확인하세요.
+기존 AX 서비스를 유지하면서 Global을 추가하려면 [통합 전환 실행서](CUTOVER_GUIDE.md)을 먼저 확인하세요.
 
 ## 실행
 
@@ -124,4 +124,4 @@ Vercel 환경변수에 초대 코드·CRON_SECRET과 다른 32자 이상 무작�
 
 ## AX Node + Global 운영 전환
 
-[본부 추가 설정](HEADQUARTERS_SETUP.md)을 따릅니다. 기존 Supabase 프로젝트의 SQL Editor에서 `supabase/upgrade-shared-db.sql`을 실행하고, Vercel에 `GLOBAL_INVITE_CODE`, `GLOBAL_ADMIN_SECRET` 두 값만 추가한 뒤 재배포합니다. DB URL과 service_role 키는 두 본부가 공유하며 참가자와 운영 데이터는 테이블별로 분리합니다.
+점검 모드 → 통합 SQL → `AX_INVITE_CODE` / `AX_ADMIN_SECRET` 이름 변경과 Global 변수 추가 → 재배포 순서입니다. **[CUTOVER_GUIDE.md](CUTOVER_GUIDE.md)**에 실행할 SQL 전체와 환경변수를 정리했습니다. 기존 계정·PIN·세션·신청·확정 기록을 보존하며, 기존 SQL을 아직 실행하지 않았어도 선행 업데이트가 포함됩니다.

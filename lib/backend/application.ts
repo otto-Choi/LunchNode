@@ -1,13 +1,13 @@
 import {createBackend,type Rpc} from './service.ts';
 import {supabaseRpc} from './supabase.ts';
-import {tenantRpc} from './tenant-rpc.ts';
+import {tenantRpc,type AxNamespace} from './tenant-rpc.ts';
 import {HEADQUARTERS,isHeadquarters,type HeadquartersId} from '../headquarters.ts';
 import {tenantConfig} from './tenant-config.ts';
 import {ApiError,errorResponse,response,secretEqual} from './security.ts';
 type Env=Record<string,string|undefined>;
 type Endpoint='auth'|'state'|'profile'|'cron'|'health'|'admin'|'tenants';
 export function createApplication({env,rpcFactory=supabaseRpc}:{env:Env;rpcFactory?:(url:string,key:string)=>Rpc}){
- const config=(id:HeadquartersId)=>({url:env.AX_SUPABASE_URL||env.SUPABASE_URL,key:env.AX_SUPABASE_SERVICE_ROLE_KEY||env.SUPABASE_SERVICE_ROLE_KEY,...(id==='ax'?{invite:env.AX_INVITE_CODE||env.INVITE_CODE,admin:env.AX_ADMIN_SECRET||env.ADMIN_SECRET}:{invite:env.GLOBAL_INVITE_CODE,admin:env.GLOBAL_ADMIN_SECRET})});
+ const config=(id:HeadquartersId)=>({url:env.SUPABASE_URL||env.AX_SUPABASE_URL,key:env.SUPABASE_SERVICE_ROLE_KEY||env.AX_SUPABASE_SERVICE_ROLE_KEY,...(id==='ax'?{invite:env.AX_INVITE_CODE||env.INVITE_CODE,admin:env.AX_ADMIN_SECRET||env.ADMIN_SECRET}:{invite:env.GLOBAL_INVITE_CODE,admin:env.GLOBAL_ADMIN_SECRET})});
  function validate(id:HeadquartersId){const c=config(id);if(!c.url||!c.key)throw new ApiError(503,'CONFIG','본부 DB 연결 설정이 필요합니다.');
   if(id==='global'){
    const ax=config('ax');
@@ -15,13 +15,21 @@ export function createApplication({env,rpcFactory=supabaseRpc}:{env:Env;rpcFacto
   }return c;
  }
  const available=(id:HeadquartersId)=>{try{validate(id);return true;}catch{return false;}};
- async function backend(id:HeadquartersId){const c=validate(id),rpc=tenantRpc(rpcFactory(c.url!,c.key!),id);let info:{tenant?:string}|undefined;
-  try{info=await rpc('lunch_tenant_info',{});}catch(error){if(id==='global')throw error;}
+ async function backend(id:HeadquartersId){
+  const c=validate(id),rawRpc=rpcFactory(c.url!,c.key!);let axNamespace:AxNamespace='ax';let rpc=tenantRpc(rawRpc,id,axNamespace);let info:{tenant?:string}|undefined;
+  try{info=await rpc('lunch_tenant_info',{});}catch(error){
+   // Only a genuinely absent function permits legacy access. Outages never switch namespaces.
+   if(id!=='ax'||!(error instanceof ApiError)||error.code!=='RPC_MISSING')throw error;
+   axNamespace='legacy';rpc=tenantRpc(rawRpc,id,axNamespace);
+   try{info=await rpc('lunch_tenant_info',{});}catch(legacyError){if(!(legacyError instanceof ApiError)||legacyError.code!=='RPC_MISSING')throw legacyError;}
+  }
   if(info&&info.tenant!==id)throw new ApiError(503,'TENANT','연결된 DB의 본부 설정이 일치하지 않습니다.');
   if(id==='global'&&!info)throw new ApiError(503,'TENANT','Global DB 초기화가 필요합니다.');
-  const t=tenantConfig(id);return {rpc,service:createBackend({rpc,inviteCode:c.invite||'',adminSecret:c.admin||'',cronSecret:env.CRON_SECRET||'',origin:env.APP_ORIGIN||undefined,secureCookies:env.NODE_ENV==='production',tenantId:id,requireRosterGate:true,roster:t.roster,policy:t.policy})};
+  const t=tenantConfig(id);return {rpc,service:createBackend({rpc,inviteCode:c.invite||'',adminSecret:c.admin||'',cronSecret:env.CRON_SECRET||'',origin:env.APP_ORIGIN||undefined,secureCookies:env.NODE_ENV==='production',tenantId:id,requireRosterGate:true,roster:t.roster,policy:t.policy,cookieStyle:id==='ax'&&axNamespace==='legacy'?'legacy':'namespaced'})};
  }
+
  async function handle(endpoint:Endpoint,request:Request){try{
+  if(env.MAINTENANCE_MODE==='true')throw new ApiError(503,'MAINTENANCE','서비스 점검 중입니다. 잠시 후 다시 접속해 주세요.');
   if(endpoint==='tenants'){
    if(request.method!=='GET')return response({error:'허용되지 않은 메서드입니다.'},405);
    return response({headquarters:HEADQUARTERS.map(h=>({...h,available:available(h.id)}))});

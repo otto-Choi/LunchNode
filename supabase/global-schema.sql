@@ -1,10 +1,13 @@
--- SAME SUPABASE PROJECT AS AX NODE. Adds public.global_lunch_* tables and RPCs.
--- Rerunnable: preserves both headquarters' accounts, sessions, choices and history.
+-- SAME SUPABASE PROJECT. Global-only installer; preserves saved records.
 begin;
-do $$begin
- if to_regprocedure('public.lunch_tenant_info()') is null then raise exception 'Apply the AX headquarters operations update first.'; end if;
- if public.lunch_tenant_info()->>'tenant' is distinct from 'ax' then raise exception 'This installer requires the existing AX Node project.'; end if;
-end$$;
+do $guard$ begin
+ if to_regprocedure('public.ax_lunch_tenant_info()') is not null then
+  if public.ax_lunch_tenant_info()->>'tenant' is distinct from 'ax' then raise exception 'AX tenant configuration mismatch'; end if;
+ elsif to_regprocedure('public.lunch_tenant_info()') is not null then
+  if public.lunch_tenant_info()->>'tenant' is distinct from 'ax' then raise exception 'AX tenant configuration mismatch'; end if;
+ else raise exception 'Apply the AX setup first';
+ end if;
+end $guard$;
 -- Baseline for fresh and existing databases. Never deletes participant data.
 
 -- Fixed roster: 8 in class 4, 9 in class 5, 3 December hires.

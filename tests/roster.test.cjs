@@ -50,7 +50,7 @@ test('late opt-in and cancellation preserve every other assignment; cutoff appli
 test('SQL seed and migration contain exactly the same canonical roster',()=>{
  const expected=ROSTER.map(p=>[p.id,p.name,p.className,p.defaultStatus]);
  for(const file of ['supabase/schema.sql','supabase/migrations/20261021090100_fixed_roster.sql']){
- const sql=fs.readFileSync(path.join(root,file),'utf8').split('-- SAME SUPABASE PROJECT AS AX NODE.')[0];const rows=[...sql.matchAll(/\('([0-9a-f-]+)'::uuid,'([^']+)','([^']+)','(absent|unset)'\)/g)].map(m=>m.slice(1));
+ const sql=fs.readFileSync(path.join(root,file),'utf8').split('-- SAME SUPABASE PROJECT. Global-only installer;')[0];const rows=[...sql.matchAll(/\('([0-9a-f-]+)'::uuid,'([^']+)','([^']+)','(absent|unset)'\)/g)].map(m=>m.slice(1));
  assert.deepEqual([...new Map(rows.map(r=>[r[1],r])).values()],expected);assert.ok(sql.includes('lunch_roster_allowed'));assert.ok(sql.includes('lunch_check_identity'));
  }
 });

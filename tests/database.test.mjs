@@ -134,10 +134,10 @@ test('same-database Global tables preserve all AX data and isolate auth, choices
   const {GLOBAL_ROSTER}=await import('../lib/backend/global-roster.ts');const {tenantConfig}=await import('../lib/backend/tenant-config.ts');
   const people=(await global.admin.query('select id,name,class_name as "className",default_status as "defaultStatus" from global_lunch_roster order by id')).rows;assert.deepEqual(people,GLOBAL_ROSTER);
   assert.equal(people.filter(p=>p.className==='IOA').length,12);assert.ok(people.every(p=>p.defaultStatus==='unset'));assert.deepEqual(tenantConfig('global').policy.genderByName,{});
-  const backend=createBackend({rpc:global.rpc,tenantId:'global',roster:GLOBAL_ROSTER,policy:tenantConfig('global').policy,inviteCode:'global-only',adminSecret:'global-operator-key-at-least-32-chars',cronSecret:'global-cron',secureCookies:false});
+  const backend=createBackend({rpc:global.rpc,tenantId:'global',roster:GLOBAL_ROSTER,policy:tenantConfig('global').policy,inviteCode:'global-only',adminSecret:'global-operator-key-at-least-32-chars',cronSecret:'global-cron',secureCookies:false,cookieStyle:'namespaced'});
   const callGlobal=(endpoint,body,cookie='')=>backend.handle(endpoint,req(endpoint,body,cookie));
   const registered=await callGlobal('auth',{action:'register',name:'박인홍',pin:'123456',invite:'global-only'});assert.equal(registered.status,200,await registered.clone().text());const cookie=registered.headers.get('set-cookie').split(';')[0];
-  assert.match(cookie,/^lunch_session_global=/);assert.equal((await callGlobal('auth',{action:'register',name:'최철원',pin:'123456',invite:'global-only'})).status,400);
+  assert.match(cookie,/^global_lunch_session=/);assert.equal((await callGlobal('auth',{action:'register',name:'최철원',pin:'123456',invite:'global-only'})).status,400);
   const attendees=[...GLOBAL_ROSTER.slice(0,4),...GLOBAL_ROSTER.slice(12,16)];
   for(const p of attendees)if(p.name!=='박인홍'){const r=await callGlobal('auth',{action:'register',name:p.name,pin:'123456',invite:'global-only'});assert.equal(r.status,200,await r.clone().text());}
   const choices=Object.fromEntries(attendees.map(p=>[p.id,{status:'join',meal:'any'}]));
@@ -150,8 +150,8 @@ test('same-database Global tables preserve all AX data and isolate auth, choices
   const application=createApplication({env:{SUPABASE_URL:'https://shared.test',SUPABASE_SERVICE_ROLE_KEY:'shared-key',INVITE_CODE:'ax-only',ADMIN_SECRET:'ax-operator-key-at-least-32-characters',GLOBAL_INVITE_CODE:'global-only',GLOBAL_ADMIN_SECRET:'global-operator-key-at-least-32-chars'},rpcFactory:(url,key)=>{assert.equal(url,'https://shared.test');assert.equal(key,'shared-key');return db.rpc;}});
   const appCall=(endpoint,tenant,body,cookieValue)=>{const request=req(endpoint,body,cookieValue);request.headers.set('x-lunch-tenant',tenant);return application.handle(endpoint,request);};
   assert.equal((await appCall('state','ax',undefined,cookie)).status,401);
-  assert.equal((await appCall('state','ax',undefined,cookie.replace('lunch_session_global=','lunch_session='))).status,401);
-  assert.equal((await appCall('state','global',undefined,tokens[1].replace('lunch_session=','lunch_session_global='))).status,401);
+  assert.equal((await appCall('state','ax',undefined,cookie.replace('global_lunch_session=','lunch_session='))).status,401);
+  assert.equal((await appCall('state','global',undefined,tokens[1].replace('lunch_session=','global_lunch_session='))).status,401);
   const globalState=await appCall('state','global',undefined,cookie);assert.equal(globalState.status,200,await globalState.clone().text());assert.equal((await globalState.json()).people.length,20);
   assert.equal((await appCall('admin','global',{action:'status',key:'ax-operator-key-at-least-32-characters'},cookie)).status,403);
   const savedChoice=await appCall('state','global',{dates:['2026-10-23'],choice:{status:'join',meal:'outside'}},cookie);assert.equal(savedChoice.status,200,await savedChoice.clone().text());
@@ -161,9 +161,51 @@ test('same-database Global tables preserve all AX data and isolate auth, choices
   assert.deepEqual(await snapshotAX(),beforeAX);
   // Browser roles cannot access either namespace; service calls cannot accidentally accept the other session.
   for(const prefix of ['', 'global_']){const permissions=(await db.admin.query(`select has_table_privilege('anon','${prefix}lunch_users','select') as a,has_table_privilege('authenticated','${prefix}lunch_state','select') as b,has_function_privilege('anon','${prefix}lunch_snapshot(text,boolean)','execute') as c`)).rows[0];assert.deepEqual(permissions,{a:false,b:false,c:false});}
-  // The one-paste upgrade is also safe after both headquarters already have accounts and history.
-  await db.admin.query(await fs.readFile('supabase/upgrade-shared-db.sql','utf8'));
-  assert.deepEqual(await snapshotAX(),beforeAX);assert.deepEqual(await snapshotGlobal(),savedGlobal);
-  assert.deepEqual((await db.admin.query('select id,pin_hash from lunch_users order by id')).rows,axUsers);assert.deepEqual((await db.admin.query('select data,version from lunch_state')).rows,axState);
+  // Record all AX rows and table OIDs: rename must preserve identity and every stored value.
+  const oldOids=(await db.admin.query("select relname,oid::int from pg_class where relnamespace='public'::regnamespace and relname=any($1)",[axTables])).rows;
+  const upgrade=await fs.readFile('supabase/upgrade-shared-db.sql','utf8');await db.admin.query(upgrade);
+  for(const item of oldOids)assert.equal((await db.admin.query('select to_regclass($1)::oid::int as oid',['public.ax_'+item.relname])).rows[0].oid,item.oid);
+  const snapshotRenamed=async()=>Object.fromEntries(await Promise.all(axTables.map(async table=>[table,(await db.admin.query(`select coalesce(jsonb_agg(t order by to_jsonb(t)::text),'[]') as data from public.ax_${table} t`)).rows[0].data])));
+  assert.deepEqual(await snapshotRenamed(),beforeAX);assert.deepEqual(await snapshotGlobal(),savedGlobal);
+  assert.equal((await db.admin.query("select to_regclass('public.lunch_users') as legacy")).rows[0].legacy,null);
+  // Old browser cookies no longer authenticate after cutover; existing PINs still work.
+  const login=await appCall('auth','ax',{action:'unlock',invite:'ax-only'},'');assert.equal(login.status,200);const gate=login.headers.get('set-cookie').split(';')[0];
+  const signedIn=await appCall('auth','ax',{action:'login',name:ROSTER[0].name,pin:'654321'},gate);assert.equal(signedIn.status,200,await signedIn.clone().text());assert.match(signedIn.headers.get('set-cookie'),/^ax_lunch_session=/);
+  const axCookie=signedIn.headers.get('set-cookie').split(';')[0];assert.equal((await appCall('state','ax',undefined,tokens[1])).status,401);
+  assert.equal((await appCall('state','ax',undefined,axCookie)).status,200);
+  const rawAX=db.rpc;const preserved=(await db.admin.query('select data from ax_lunch_state')).rows[0].data;
+  // Global tokens and operator keys cannot write into renamed AX tables.
+  assert.equal((await appCall('state','ax',undefined,cookie.replace('global_lunch_session=','ax_lunch_session='))).status,401);
+  assert.equal((await appCall('admin','ax',{action:'status',key:'global-operator-key-at-least-32-chars'},axCookie)).status,403);
+  await rawAX('ax_lunch_record_job',{p_ok:true,p_code:null});assert.equal((await rawAX('ax_lunch_system_status',{})).tenant,'ax');
+  assert.deepEqual((await db.admin.query('select data from ax_lunch_state')).rows[0].data,preserved);
+  const afterAX=await snapshotRenamed(),afterGlobal=await snapshotGlobal();await db.admin.query(upgrade);assert.deepEqual(await snapshotRenamed(),afterAX);assert.deepEqual(await snapshotGlobal(),afterGlobal);
+  // An interrupted old/new deployment can never silently create an empty AX account table.
+  await db.admin.query('create table lunch_users(id uuid)');await assert.rejects(db.admin.query(upgrade),/Both legacy and AX-prefixed/);await db.admin.query('rollback');await db.admin.query('drop table lunch_users');
+  assert.deepEqual(await snapshotRenamed(),afterAX);
  }finally{/* Both headquarters intentionally use the same pool and database. */}
+});
+
+test('single cutover upgrades an original pre-admin DB without any earlier rollout SQL',async()=>{
+ const databaseName='lunch_original_ax_cutover_test';await db.admin.query(`create database ${databaseName}`);
+ const url=new URL(process.env.DATABASE_URL);url.pathname='/'+databaseName;const legacy=databasePools(url.toString());
+ try{
+  for(const file of files.slice(0,3))await legacy.admin.query(await fs.readFile('supabase/migrations/'+file,'utf8'));
+  const token='f'.repeat(64),pinHash=await hashPin('123456');
+  await legacy.rpc('lunch_register',{p_name:ROSTER[0].name,p_pin_hash:pinHash,p_token_hash:digest(token)});
+  const stored={choices:{'2026-10-23':{[ROSTER[0].id]:{status:'join',meal:'outside'}}},days:{'2026-10-22':{phase:'final',matchedAt:'2026-10-21T22:00:00+09:00',groups:[{id:'preserved-final-group',meal:'outside',members:[ROSTER[0]]}]}},events:[]};
+  await legacy.admin.query('update lunch_state set data=$1,version=17 where id=1',[stored]);
+  const before=(await legacy.admin.query('select id,pin_hash,created_at from lunch_users order by id')).rows;
+  await legacy.admin.query(await fs.readFile('supabase/upgrade-shared-db.sql','utf8'));
+  assert.deepEqual((await legacy.admin.query('select id,pin_hash,created_at from ax_lunch_users order by id')).rows,before);
+  assert.deepEqual((await legacy.admin.query('select data,version from ax_lunch_state')).rows,[{data:stored,version:17}]);
+  assert.equal((await legacy.rpc('ax_lunch_identity',{p_token_hash:digest(token)})).id,ROSTER[0].id);
+  const info=await legacy.rpc('ax_lunch_tenant_info',{});assert.equal(info.startDate,'2026-10-22');assert.equal(info.endDate,'2026-11-30');
+  assert.equal((await legacy.admin.query('select count(*)::int as n from global_lunch_roster')).rows[0].n,20);
+  const leftovers=(await legacy.admin.query("select proname from pg_proc where pronamespace='public'::regnamespace and starts_with(proname,'lunch_')")).rows;assert.deepEqual(leftovers,[]);
+  // Verify a brand-new install uses the final namespaces from the outset.
+  await legacy.admin.query('drop schema public cascade;create schema public');
+  await legacy.admin.query(await fs.readFile('supabase/schema.sql','utf8'));
+  assert.equal((await legacy.rpc('ax_lunch_tenant_info',{})).tenant,'ax');assert.equal((await legacy.rpc('global_lunch_tenant_info',{})).tenant,'global');
+ }finally{await legacy.close();await db.admin.query(`drop database ${databaseName}`);}
 });

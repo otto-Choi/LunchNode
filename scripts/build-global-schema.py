@@ -45,12 +45,35 @@ commit;
 assert not re.search(r'public\.lunch_',text), 'Global body must never touch AX tables or RPCs'
 (root/'supabase/global-schema.sql').write_text(guard+text)
 (root/'supabase/migrations/20261023090100_global_tables.sql').write_text(guard+text)
-# One SQL Editor paste for existing AX projects, including prerequisite operator functions.
-upgrade='\n'.join((root/'supabase/migrations'/name).read_text() for name in ['20261021090300_admin_tools.sql','20261021090400_admin_rematch.sql','20261023090000_headquarters_operations.sql'])+'\n'+guard+text
-upgrade=upgrade.replace("check(action in ('reset_pin','revoke','recover','rematch'))","check(action in ('reset_pin','revoke','recover','rematch','initial_match'))")
-upgrade=re.sub(r'(?m)^begin;\s*$','',upgrade)
-upgrade=re.sub(r'(?m)^commit;\s*$','',upgrade)
-(root/'supabase/upgrade-shared-db.sql').write_text('-- EXISTING AX NODE PROJECT: add Global in the same DB. No account/state reset.\nbegin;\n'+upgrade+'\ncommit;\n')
-# Fresh projects can use the full schema or the ordered migrations.
-(root/'supabase/schema.sql').write_text('\n'.join(p.read_text() for p in migrations)+'\n'+guard+text)
 
+# Final AX namespace. Original historical migrations remain available for legacy installations.
+ax_text='\n'.join(p.read_text() for p in migrations)
+ax_text=re.sub(r'(?m)^begin;\s*$', '', ax_text)
+ax_text=re.sub(r'(?m)^commit;\s*$', '', ax_text)
+ax_text=ax_text.replace("check(action in ('reset_pin','revoke','recover','rematch'))", "check(action in ('reset_pin','revoke','recover','rematch','initial_match'))")
+ax_text=re.sub(r'\blunch_', 'ax_lunch_', ax_text)
+ax_text=ax_text.replace('pg_advisory_xact_lock(610210903)', 'pg_advisory_xact_lock(610230902)')
+(root/'supabase/ax-schema.sql').write_text('begin;\n'+ax_text+"\nnotify pgrst, 'reload schema';\ncommit;\n")
+# New Global standalone installer accepts either supported AX namespace.
+new_guard="""-- SAME SUPABASE PROJECT. Global-only installer; preserves saved records.
+begin;
+do $guard$ begin
+ if to_regprocedure('public.ax_lunch_tenant_info()') is not null then
+  if public.ax_lunch_tenant_info()->>'tenant' is distinct from 'ax' then raise exception 'AX tenant configuration mismatch'; end if;
+ elsif to_regprocedure('public.lunch_tenant_info()') is not null then
+  if public.lunch_tenant_info()->>'tenant' is distinct from 'ax' then raise exception 'AX tenant configuration mismatch'; end if;
+ else raise exception 'Apply the AX setup first';
+ end if;
+end $guard$;
+"""
+(root/'supabase/global-schema.sql').write_text(new_guard+text)
+rename=(root/'supabase/ax-rename.sql').read_text()
+# One transaction: rename existing objects, refresh all namespaced functions, add Global.
+body=new_guard+text
+body=re.sub(r'(?m)^begin;\s*$','',body)
+body=re.sub(r'(?m)^commit;\s*$','',body)
+upgrade='-- ONE EXISTING SUPABASE PROJECT: rename AX objects and add Global atomically.\nbegin;\n'+rename+'\n'+ax_text+'\n'+body+"\nnotify pgrst, 'reload schema';\ncommit;\n"
+(root/'supabase/upgrade-shared-db.sql').write_text(upgrade)
+(root/'supabase/schema.sql').write_text('begin;\n'+ax_text+'\n'+body+"\nnotify pgrst, 'reload schema';\ncommit;\n")
+
+(root/'CUTOVER_GUIDE.md').write_text((root/'scripts/cutover-guide-template.md').read_text().replace('<!-- CUTOVER_SQL -->','```sql\n'+upgrade+'```'))
