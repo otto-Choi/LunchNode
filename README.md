@@ -20,7 +20,7 @@ npm run dev
 
 1. `supabase/README.md`를 따라 DB를 만듭니다. 새 AX DB는 `supabase/schema.sql` 전체 실행 또는 GitHub 통합의 순차 마이그레이션 중 하나를 선택합니다. 기존 AX 프로젝트에 Global을 추가할 때는 `supabase/upgrade-shared-db.sql`을 실행합니다. 전체 신규 설치에는 두 본부가 포함됩니다.
 2. Vercel에서 저장소 루트 `./`, Next.js, Node.js 24를 선택합니다. 빌드/설치 명령은 기본값입니다.
-3. 서버 환경변수 `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `INVITE_CODE`, `CRON_SECRET`, `DEMO_MODE=false`를 설정합니다. 비밀값에 NEXT_PUBLIC_ 접두사를 붙이지 않습니다.
+3. 서버 환경변수 `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `AX_INVITE_CODE`, `AX_ADMIN_SECRET`, `GLOBAL_INVITE_CODE`, `GLOBAL_ADMIN_SECRET`, `CRON_SECRET`, `DEMO_MODE=false`, `MAINTENANCE_MODE=false`를 설정합니다. 비밀값에 NEXT_PUBLIC_ 접두사를 붙이지 않습니다.
 4. `APP_ORIGIN`은 선택입니다. 지정한다면 배포 주소의 origin(예: https://lunchnode.example.com)을 넣습니다. 비우면 요청 URL의 origin과 비교합니다.
 5. 배포 후 `/api/health`가 200과 `{ "ok": true }`를 반환하는지 확인하고, 알려진 참가자 이름으로 최초 등록합니다. 초대 코드는 초대받은 사용자에게 운영자가 전달합니다.
 
@@ -72,7 +72,7 @@ DB 통합 테스트는 **스키마를 삭제합니다**. 테스트 전용 DB에�
 
 ### 운영자 복구 도구
 
-Vercel 환경변수에 초대 코드·CRON_SECRET과 다른 32자 이상 무작위 `ADMIN_SECRET`을 추가하고 재배포합니다. Supabase에는 `supabase/migrations/20261021090300_admin_tools.sql`을 SQL Editor에서 실행하거나 GitHub 마이그레이션으로 적용합니다. 신규 DB는 최신 `supabase/schema.sql` 전체를 적용하면 됩니다.
+본부별로 초대 코드·CRON_SECRET과 다른 32자 이상 무작위 `AX_ADMIN_SECRET`, `GLOBAL_ADMIN_SECRET`을 사용합니다. 기존 DB 전환과 선행 업데이트는 [통합 실행서](CUTOVER_GUIDE.md)의 SQL 한 번으로 처리합니다. 신규 빈 DB만 최신 `supabase/schema.sql` 전체를 적용합니다.
 
 로그인 후 오른쪽 위 사용자 메뉴 → 운영자 도구 → 운영자 키 인증으로 이용합니다. 키는 브라우저 저장소에 저장하지 않습니다. PIN 재설정과 전체 세션 종료는 하나의 DB 트랜잭션이며, 사용자 신청과 확정 기록은 유지합니다. 복구는 누락된 최초 편성과 최종 마감만 처리하며 이미 편성된 조를 다시 섞지 않습니다. 작업자·대상·시간·작업 종류는 `lunch_admin_events`에 기록하며 PIN이나 키는 기록하지 않습니다. 운영자 키 보유자는 모든 계정 복구 권한을 가지므로 운영자에게만 전달합니다.
 
@@ -92,7 +92,7 @@ Vercel 환경변수에 초대 코드·CRON_SECRET과 다른 32자 이상 무작�
 
 ### 운영자 전체 재편성
 
-기존 DB는 `supabase/migrations/20261021090400_admin_rematch.sql`을 적용합니다. `ADMIN_SECRET`은 기존 값을 사용합니다. 운영자 도구 → 전체 조 다시 편성 → 날짜 선택 → 조 변경 안내 확인 → 전체 조 다시 편성으로 실행합니다. 최초 편성 후부터 당일 오전 11시 전까지 사용할 수 있습니다.
+기존 DB는 [통합 실행서](CUTOVER_GUIDE.md)에 따라 전환합니다. 재편성 함수도 통합 SQL에 포함되어 있으며, 기존 운영자 키의 실제 값은 `AX_ADMIN_SECRET`으로 옮겨 사용합니다. 운영자 도구 → 전체 조 다시 편성 → 날짜 선택 → 조 변경 안내 확인 → 전체 조 다시 편성으로 실행합니다. 최초 편성 후부터 당일 오전 11시 전까지 사용할 수 있습니다.
 
 현재 참석자와 현재 메뉴 선택을 기준으로 22시 최초 편성과 같은 알고리즘을 실행합니다. 이전 조는 해당 날짜에서 교체되며 별도의 만남 기록으로 남기지 않습니다. **오전 11시에 최종 확정된 마지막 조만 이후 편성의 만남 횟수·최근 만남에 반영합니다.** 감사 로그에는 실행자·날짜·실행 시각만 기록합니다.
 

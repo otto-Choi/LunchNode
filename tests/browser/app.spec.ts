@@ -139,3 +139,10 @@ test('Global registers and saves to its own tables through the shared Supabase c
  await page.reload();await expect(page.locator('.breadcrumb')).toContainText('Global');await expect(page.locator('.date-cell.selected .status-label')).toHaveText('참석');
  const cookies=await page.context().cookies();expect(cookies.some(c=>c.name==='global_lunch_session')).toBe(true);expect(cookies.some(c=>c.name==='ax_lunch_session')).toBe(false);
 });
+
+test('maintenance displays a clear paused screen and retry recovers the application',async({page})=>{
+ let paused=true;const person={id:'p1',name:'권도영',className:'4반'};
+ await page.route('**/api/state',route=>route.fulfill(paused?{status:503,json:{code:'MAINTENANCE',error:'서비스 점검 중입니다. 잠시 후 다시 접속해 주세요.'}}:{json:{demo:false,user:person,people:[person],dates:['2026-10-23'],now:'2026-10-23T10:00:00+09:00',state:{choices:{},days:{},events:[]}}}));
+ await page.goto('/');await expect(page.getByRole('heading',{name:'점검 중',exact:true})).toBeVisible();await expect(page.getByRole('alert')).toContainText('서비스 점검 중');await expect(page.getByRole('heading',{name:'내 점심 일정',exact:true})).toHaveCount(0);
+ paused=false;await page.getByRole('button',{name:'다시 불러오기',exact:true}).click();await expect(page.getByRole('heading',{name:'내 점심 일정',exact:true})).toBeVisible();
+});
