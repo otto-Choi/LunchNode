@@ -1,6 +1,6 @@
-import { emptyState, syncDue, weekdays, defaultChoice, type State } from './domain';
-import { ROSTER } from './roster';
-import { OPERATION_START, OPERATION_END, DEMO_NOW } from './operation';
+import { emptyState, syncDue, weekdays, defaultChoice, type State } from './domain.ts';
+import { ROSTER } from './roster.ts';
+import { OPERATION_START, OPERATION_END, DEMO_NOW } from './operation.ts';
 export const demoPeople=ROSTER;
 export const demoDates=weekdays(OPERATION_START,OPERATION_END);
 export const demoNow=DEMO_NOW;

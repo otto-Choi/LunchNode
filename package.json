@@ -1,5 +1,5 @@
 {
-  "name": "lunch-match",
+  "name": "lunchnode",
   "version": "1.0.0",
   "private": true,
   "scripts": {
@@ -8,7 +8,6 @@
     "start": "next start --hostname 0.0.0.0",
     "typecheck": "tsc --noEmit",
     "test": "node --test tests/*.test.cjs",
-    "preview:build": "node scripts/build-preview.cjs",
     "test:db": "node --test tests/database.test.mjs",
     "test:browser": "playwright test"
   },

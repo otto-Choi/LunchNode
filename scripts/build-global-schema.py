@@ -44,7 +44,7 @@ commit;
 """
 assert not re.search(r'public\.lunch_',text), 'Global body must never touch AX tables or RPCs'
 (root/'supabase/global-schema.sql').write_text(guard+text)
-(root/'supabase/migrations/20261023090100_global_tables.sql').write_text(guard+text)
+# Historical migrations are immutable; regenerate installers only.
 
 # Final AX namespace. Original historical migrations remain available for legacy installations.
 ax_text='\n'.join(p.read_text() for p in migrations)

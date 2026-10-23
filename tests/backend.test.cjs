@@ -186,3 +186,21 @@ test('absence origin survives API reload and cannot be forged by incoming reques
  const result=await f.send('state',{dates:[date],choice:{status:'absent',meal:'prefer_outside',origin:'default'},choiceOrigins:{[date]:{[person.id]:'default'}}},cookie);assert.equal(result.status,200);
  saved=await (await f.send('state',undefined,cookie)).json();assert.equal(saved.state.choiceOrigins[date][person.id],'selected');assert.deepEqual(saved.state.choices[date][person.id],{status:'absent',meal:'prefer_outside'});
 });
+
+test('operator recovery rechecks the session before committing due work',async()=>{
+ const f=await fixture(),cookie=await f.register();f.setNow('2026-10-22T11:00:00+09:00');
+ const before=f.getState();let revoked=false;
+ const backend=f.createBackend({...f.options,rpc:async(name,args)=>{
+  const result=await f.rpc(name,args);
+  if(name==='lunch_identity'&&!revoked){revoked=true;f.sessions.clear();}
+  return result;
+ }});
+ const result=await backend.handle('admin',f.request('admin',{key:f.options.adminSecret,action:'recover'},cookie));
+ assert.equal(result.status,401);assert.deepEqual(f.getState(),before);
+});
+
+test('first-day manual matching rejects requests before 22:00 without writing',async()=>{
+ const f=await fixture(),cookie=await f.register();f.setNow('2026-10-21T21:59:59+09:00');
+ const before=f.getState();const result=await f.send('admin',{key:f.options.adminSecret,action:'initial_match',date:'2026-10-22'},cookie);
+ assert.equal(result.status,409);assert.equal((await result.json()).code,'NOT_MATCHED');assert.deepEqual(f.getState(),before);
+});

@@ -1,12 +1,15 @@
-# LunchNode · 런치노드
+# 런치노드 · LunchNode
 
-AX Node와 Global의 본부별 점심 신청·조 편성 앱입니다. 같은 Supabase 프로젝트 안에서 AX는 `ax_lunch_*`, Global은 `global_lunch_*` 테이블을 사용합니다. Next.js 15 / React 19, Supabase PostgreSQL, Vercel을 사용합니다.
+모바일과 PC에서 점심 참석 여부와 메뉴를 신청하고, 조 편성 결과를 확인하는 Next.js 앱입니다.
 
-기존 AX 서비스를 유지하면서 Global을 추가하려면 [통합 전환 실행서](CUTOVER_GUIDE.md)을 먼저 확인하세요.
+- 서비스: https://lunch-node.vercel.app/
+- 본부: **AX Node**, **Global**. 본부 선택 → 초대 코드 확인 → 이름 선택 → 숫자 6자리 PIN으로 등록·로그인합니다.
+- 하나의 Supabase 프로젝트 안에서 `ax_lunch_*`와 `global_lunch_*` 테이블·RPC·세션·초대 코드·운영자 키를 분리합니다.
+- 운영 기간은 각 본부의 DB 설정을 따릅니다. 현재 종료일은 **2026-11-30**, 운영일은 평일입니다. 모든 운영 시각은 **한국 시간**입니다.
 
-## 실행
+## 개발
 
-Node.js 24를 사용합니다.
+Node.js 24가 필요합니다.
 
 ```sh
 npm install
@@ -14,114 +17,97 @@ cp .env.example .env.local
 npm run dev
 ```
 
-실제 운영 모드는 `DEMO_MODE=false`입니다. Supabase 키가 없으면 연결 오류를 보여주며 데모로 자동 전환하지 않습니다. UI만 보려면 `DEMO_MODE=true`를 명시합니다. `browser-demo/index.html`과 과거 HTML은 별도의 브라우저 로컬 체험 파일이며 실제 DB를 사용하지 않습니다.
-
-## Supabase / Vercel 설정
-
-1. `supabase/README.md`를 따라 DB를 만듭니다. 새 AX DB는 `supabase/schema.sql` 전체 실행 또는 GitHub 통합의 순차 마이그레이션 중 하나를 선택합니다. 기존 AX 프로젝트에 Global을 추가할 때는 `supabase/upgrade-shared-db.sql`을 실행합니다. 전체 신규 설치에는 두 본부가 포함됩니다.
-2. Vercel에서 저장소 루트 `./`, Next.js, Node.js 24를 선택합니다. 빌드/설치 명령은 기본값입니다.
-3. 서버 환경변수 `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `AX_INVITE_CODE`, `AX_ADMIN_SECRET`, `GLOBAL_INVITE_CODE`, `GLOBAL_ADMIN_SECRET`, `CRON_SECRET`, `DEMO_MODE=false`, `MAINTENANCE_MODE=false`를 설정합니다. 비밀값에 NEXT_PUBLIC_ 접두사를 붙이지 않습니다.
-4. `APP_ORIGIN`은 선택입니다. 지정한다면 배포 주소의 origin(예: https://lunchnode.example.com)을 넣습니다. 비우면 요청 URL의 origin과 비교합니다.
-5. 배포 후 `/api/health`가 200과 `{ "ok": true }`를 반환하는지 확인하고, 알려진 참가자 이름으로 최초 등록합니다. 초대 코드는 초대받은 사용자에게 운영자가 전달합니다.
-
-운영 날짜의 기준은 DB `lunch_settings`입니다. AX 기간은 업데이트 적용 후 **2026-10-22 ~ 2026-11-30, 평일 28일**입니다. Global 시작일은 설치 시각에 따라 정해집니다. 로컬 데모 날짜는 `lib/operation.ts`로 별도 관리합니다.
-
-## API
-
-| 경로 | 메서드 | 용도 |
-|---|---|---|
-| `/api/auth` | GET | 현재 로그인 사용자 또는 null |
-| `/api/auth` | POST | action=unlock/roster/register/login/logout |
-| `/api/tenants` | GET | 본부 목록과 설정 여부, 참가자 정보는 포함하지 않음 |
-| `/api/state` | GET | 전체 일정·조·본인 신청; 로그인 필요 |
-| `/api/state` | POST | dates 배열 + choice(status,meal); 본인 신청만 변경 |
-| `/api/profile` | POST | currentPin/newPin으로 PIN 변경 및 전체 세션 폐기 |
-| `/api/cron` | GET | Bearer CRON_SECRET으로 누락 편성·확정 처리 |
-| `/api/health` | GET | 비밀값을 노출하지 않는 DB/스키마 상태 확인 |
-
-본부별 요청은 `x-lunch-tenant: ax` 또는 `global`로 구분합니다. `/api/cron`은 공통 키로 두 본부를 독립 처리합니다. POST는 같은 origin의 JSON만 받습니다. 미인증은 401, 잘못된 입력은 400, 다른 origin은 403, 마감·충돌은 409, 과도한 로그인은 429, DB 연결/설정 오류는 503입니다. 응답은 캐시하지 않습니다. 쿠키는 운영 환경에서 Secure·HttpOnly·SameSite=Lax이며 최대 21일입니다.
-
-자동 편성은 전날 22시, 최종 확정은 당일 11시(Asia/Seoul)입니다. `vercel.json`의 UTC 예약 작업 두 개가 이를 실행합니다. 장애 복구를 위해 일반 상태 읽기/쓰기 요청도 누락된 작업을 보완합니다. cron이 여러 번 실행돼도 기존 조를 다시 섞지 않습니다. 늦은 최초 실행은 당시 저장된 신청으로 복구하므로 정상 시각 실행과 완전히 같은 결과를 보장하지 않습니다.
-
-## 검증
+`.env.local`에 실제 서버 설정을 입력합니다. 화면만 살펴볼 때는 `DEMO_MODE=true`를 사용합니다. 체험 모드는 브라우저에 예시 데이터를 저장하며 실제 DB를 사용하지 않습니다. 초기 시안 HTML과 ZIP은 Git 이력에 보관하고 현재 소스에서는 제거했습니다.
 
 ```sh
-npm test
 npm run typecheck
+npm test
 npm run build
 ```
 
-GitHub Actions는 폐기 가능한 PostgreSQL 17에서 실제 SQL과 RPC를 실행한 뒤 Next.js 빌드 및 데스크톱/모바일 Chromium 테스트를 수행합니다. 브라우저 테스트의 HTTP 전송 어댑터는 PostgREST 규약을 흉내 내지만, 인증·저장 로직과 SQL은 실제 앱/DB 코드를 사용합니다. 실제 Supabase PostgREST 및 Vercel 예약 실행은 배포 후 추가 확인이 필요합니다.
+## 구조
 
-DB 통합 테스트는 **스키마를 삭제합니다**. 테스트 전용 DB에서만 `DATABASE_URL`과 `ALLOW_DATABASE_RESET=1`을 설정하고 `npm run test:db`를 실행합니다. 운영 DB URL을 사용하지 않습니다.
+| 경로 | 역할 |
+| --- | --- |
+| `app/` | Next.js 페이지·스타일·브라우저 아이콘·API 진입점 |
+| `components/lunch-app.tsx` | 일정, 조 편성 결과, 과거 기록, 인증, 운영자 화면 |
+| `lib/domain.ts` | 참석·취소·최초 편성·추가 참여·재편성·확정 로직 |
+| `lib/backend/` | 인증, 본부 분리, RPC, 운영자 권한, 서버 설정 |
+| `lib/client/` | 브라우저 API 요청과 탭별 본부 선택 |
+| `lib/roster.ts`, `lib/global-roster.ts` | 본부별 고정 명단 |
+| `public/` | 서비스 로고 |
+| `supabase/` | 설치·전환 SQL과 기존 마이그레이션 이력 |
+| `scripts/` | SQL 및 전환 문서 생성 스크립트 |
+| `tests/` | 도메인·인증·분리 테스트, PostgreSQL 통합 테스트 |
+| `tests/browser/` | PC·모바일 브라우저 QA |
+| `docs/` | 코드리뷰와 QA 범위 기록 |
 
-`npm run preview:build`는 별도의 HTML 체험 파일을 재생성합니다. 과거 `ui-preview-v*.html`은 이전 작업 보존용이며 운영 앱은 `/app`, `/lib`, `/components`입니다.
+## 운영 설정
 
+환경변수 목록은 [.env.example](.env.example)을 기준으로 합니다. 비밀값은 Git에 저장하지 않습니다. `SUPABASE_SERVICE_ROLE_KEY`, 초대 코드와 운영자 키를 `NEXT_PUBLIC_*` 변수로 만들면 안 됩니다.
 
-## 확인된 검증 결과
+| 변수 | 값·용도 |
+| --- | --- |
+| `SUPABASE_URL` | 공통 Supabase 프로젝트 URL |
+| `SUPABASE_SERVICE_ROLE_KEY` | 공통 서버 전용 서비스 키 |
+| `AX_INVITE_CODE`, `GLOBAL_INVITE_CODE` | 서로 다른 본부 초대 코드 |
+| `AX_ADMIN_SECRET`, `GLOBAL_ADMIN_SECRET` | 서로 다른 32자 이상의 운영자 키 |
+| `CRON_SECRET` | Vercel 예약 작업 인증 키 |
+| `APP_ORIGIN` | `https://lunch-node.vercel.app` |
+| `DEMO_MODE` | 운영에서는 `false` |
+| `MAINTENANCE_MODE` | 정상 운영 `false`, 점검 시 `true` |
+| `OPERATION_START`, `OPERATION_END` | 체험 모드 전용 날짜. 운영 날짜는 DB에서 관리 |
 
-[GitHub Actions](https://github.com/otto-Choi/LunchNode/actions/workflows/verify.yml)에서 타입 검사, 알고리즘·백엔드 단위 테스트, 동일 PostgreSQL DB의 테이블·권한 격리 및 데이터 보존 테스트, 프로덕션 빌드 및 PC/모바일 브라우저 테스트를 실행합니다. 현재 본부 추가 설정은 [HEADQUARTERS_SETUP.md](HEADQUARTERS_SETUP.md)를 따릅니다. 과거 `전달상태.txt`와 HTML 체험 파일은 이전 버전 기록입니다.
+Vercel의 Root Directory는 저장소 루트, Framework Preset은 Next.js로 설정합니다. 빌드와 출력 경로는 기본값을 사용합니다. 환경변수 변경 후에는 재배포해야 반영됩니다.
 
+### DB 설치와 이력
 
-## 메뉴 선택
+**이미 전환한 운영 DB에 신규 설치 SQL을 다시 실행할 필요가 없습니다.** 현재 운영 데이터에 대한 임의 초기화나 테스트 실행은 금지합니다.
 
-메뉴는 도시락만(`lunchbox`), 도시락선호(`prefer_lunchbox`), 상관없음(`any`), 외식선호(`prefer_outside`), 외식만(`outside`) 순서입니다. 기본값은 `any`이며 개별·여러 날짜 신청에 동일하게 적용합니다. 기존 `lunchbox`/`outside` 값은 원래의 엄격한 조건으로 유지하므로 데이터 변환이나 추가 SQL이 필요 없습니다.
+| 파일 | 대상 |
+| --- | --- |
+| `supabase/schema.sql` | 비어 있는 프로젝트에 AX·Global 신규 설치 |
+| `supabase/global-schema.sql` | AX만 있는 기존 프로젝트에 Global 추가 |
+| `supabase/upgrade-shared-db.sql` | 기존 `lunch_*` 구조에서 AX 이름 변경 및 Global 추가. 재실행 지원 |
+| `supabase/upgrade-before-cutover.sql` | 기존 `lunch_*`만 있는 전환 전 상태를 검사하는 1회용 전환 SQL |
+| `supabase/ax-rename.sql` | 설치기가 사용하는 내부 이름 변경 조각. 단독 실행용 아님 |
+| `supabase/migrations/` | 이미 배포된 변경 이력. 적용된 파일을 수정하거나 현재 운영 DB에 처음부터 재적용하지 않음 |
 
-최초 편성은 엄격한 조건을 반드시 지키고, 1~2명 소수 조를 줄인 다음 선호 위반, 5명 조, 과거 반복 순으로 줄입니다. 추가 참여는 기존 조를 유지하며 소수 인원 조 충원, 선호, 인원수, 과거 만남 순으로 빈자리를 고릅니다. 선호에 맞는 자리가 없으면 다른 식사 방식에도 합류할 수 있습니다. 결과 조의 실제 식사 방식은 도시락/외식 두 가지입니다.
+전환 절차·조회 쿼리·환경변수 이름 변경은 [통합 전환 실행서](CUTOVER_GUIDE.md)를 참고합니다. 이 문서는 **전환 전 DB를 위한 절차**입니다. 현재 `ax_lunch_users`와 `global_lunch_users`가 모두 있는 서비스는 전환 완료 상태입니다.
 
+SQL 생성기는 다음과 같습니다. 파일을 재생성하는 명령이며 DB에 접속하지 않습니다.
 
-### 운영자 복구 도구
+```sh
+python scripts/build-global-schema.py
+python scripts/build-before-cutover.py
+```
 
-본부별로 초대 코드·CRON_SECRET과 다른 32자 이상 무작위 `AX_ADMIN_SECRET`, `GLOBAL_ADMIN_SECRET`을 사용합니다. 기존 DB 전환과 선행 업데이트는 [통합 실행서](CUTOVER_GUIDE.md)의 SQL 한 번으로 처리합니다. 신규 빈 DB만 최신 `supabase/schema.sql` 전체를 적용합니다.
+생성 결과는 검토하고 통합 테스트를 통과한 뒤 반영합니다. 새로운 DB 변경은 별도 마이그레이션으로 추가합니다.
 
-로그인 후 오른쪽 위 사용자 메뉴 → 운영자 도구 → 운영자 키 인증으로 이용합니다. 키는 브라우저 저장소에 저장하지 않습니다. PIN 재설정과 전체 세션 종료는 하나의 DB 트랜잭션이며, 사용자 신청과 확정 기록은 유지합니다. 복구는 누락된 최초 편성과 최종 마감만 처리하며 이미 편성된 조를 다시 섞지 않습니다. 작업자·대상·시간·작업 종류는 `lunch_admin_events`에 기록하며 PIN이나 키는 기록하지 않습니다. 운영자 키 보유자는 모든 계정 복구 권한을 가지므로 운영자에게만 전달합니다.
+### 편성 및 예약 작업
 
-모바일 일정에는 한국 시간 기준 오늘 이후 날짜만 표시하며, PC에는 전체 날짜를 표시하고 지난 날짜는 회색으로 표시합니다. 지난 매칭 기록 탭에서는 모바일에서도 확정 기록을 조회할 수 있습니다.
+- **전날 22:00** 최초 편성, **당일 11:00** 최종 확정. 11시 이후 수정은 DB에서도 차단합니다.
+- 도시락만·외식만 조건을 지키고, 1~2명 조를 줄인 뒤 5명 조를 최소화하여 가능한 한 4명으로 편성합니다.
+- 같은 인원 구성에서는 최근 재회를 피하고, 누적 만남 횟수를 고려합니다. AX는 그다음 성비·반 혼합, Global은 IOA·IPO 혼합을 고려합니다. 부드러운 메뉴 선호는 필수 메뉴와 다르게 상황에 따라 바뀔 수 있습니다.
+- 일반 추가 참여·취소는 기존 조원의 배정을 유지합니다. 운영자 전체 재편성은 당일 11시 전, 최초 편성 후 가능합니다.
+- 최종 확정된 과거 조만 만남 기록에 사용합니다. 교체된 임시 조는 누적하지 않습니다.
+- 참석 인원·메뉴 조건과 제한된 탐색량 때문에 모든 경우의 최적 조합을 보장하지는 않습니다. 참석자는 모두 배정합니다.
+- 조 결과의 기본 날짜는 당일 **13:00**에 다음 운영일로 바뀝니다.
 
+`vercel.json`은 UTC 기준 13:00(일~목), 02:00(월~금)에 `/api/cron`을 호출합니다. Vercel이 `Authorization: Bearer <CRON_SECRET>`을 전송해야 합니다. 실제 작업은 각 본부의 운영일·시각을 다시 검사합니다. 예약 작업이 늦거나 누락되면 상태 조회와 운영자 복구에서도 지난 작업을 보완합니다. 예약 호출의 정확한 실행 시각과 플랫폼 이용 조건은 Vercel 운영 환경에서 확인해야 합니다.
 
-### 반복 만남 최소화
+## QA
 
-최초 편성은 도시락만·외식만과 최대 5명 제한을 지킵니다. 우선 1~2명 조를 최소화하고, 5명 조 수를 최소화한 뒤 3명 조 수를 줄여 가능한 한 4명 조로 구성합니다. 그 인원 구성 안에서 가장 최근의 재회를 피하는 것을 우선합니다. 재회가 불가피하면 마지막 만남이 더 오래전인 조합을 선택하고, 동률이면 누적 만남 횟수 → 메뉴 선호 순으로 비교합니다. 최근 만남의 중요도가 오래전 만남 여러 건에 묻히지 않도록 날짜별 비용을 정수로 구분합니다. 이전 날짜의 최종 확정 기록만 참고합니다.
+GitHub Actions의 `Verify backend and application`이 타입 검사 → 단위 테스트 → PostgreSQL 17 통합 테스트 → 프로덕션 빌드 → PC·모바일 Chromium 브라우저 테스트를 실행합니다. 실행 기록과 실패 시 trace는 [Actions](https://github.com/otto-Choi/LunchNode/actions)에서 확인할 수 있습니다.
 
-160개 초기 후보로 시작하여 가능한 1~5명 조를 열거하고 분기 한정 탐색과 메모이제이션으로 조합을 개선합니다. 서버 응답을 위해 최대 20,000개 탐색 노드 또는 500,000개 후보 검사로 제한하며, 전체 조합의 수학적 최적해를 항상 보장하지는 않습니다. 최대 20명의 고정 명단을 전제로 합니다.
+DB·브라우저 테스트는 **삭제해도 되는 전용 DB**에서만 실행합니다. `ALLOW_DATABASE_RESET=1`은 해당 DB 초기화를 허용하는 명시적 스위치입니다.
 
-추가 참석은 메뉴가 맞는 4명 미만 조를 먼저 후보로 선택합니다. 그 안에서 최근 재회 → 누적 만남 횟수 → 소수 조 충원 → 메뉴 선호 → 적은 인원 순으로 빈자리를 선택합니다. 모든 호환 조가 4명 이상일 때만 5번째 인원으로 합류합니다. 엄격한 메뉴 선택은 항상 지키고, 기존 조원과 확정 기록은 재편성하지 않습니다.
+```sh
+DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/lunch_test ALLOW_DATABASE_RESET=1 npm run test:db
+npm run build
+DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/lunch_test ALLOW_DATABASE_RESET=1 PLAYWRIGHT_CHANNEL=chrome npm run test:browser
+```
 
-서비스 로고와 브라우저 탭 아이콘은 첨부된 주황색 노드 디자인을 SVG로 재현한 `public/lunchnode.svg`, `app/icon.svg`를 사용합니다.
+브라우저 테스트는 포트 3000과 54329를 사용합니다. Chrome이 없다면 `npx playwright install chromium`으로 설치하고 `PLAYWRIGHT_CHANNEL`을 생략합니다. 모바일 테스트는 iPhone 크기의 Chromium 에뮬레이션이며 실제 Safari 기기 검증을 대체하지 않습니다.
 
-
-### 운영자 전체 재편성
-
-기존 DB는 [통합 실행서](CUTOVER_GUIDE.md)에 따라 전환합니다. 재편성 함수도 통합 SQL에 포함되어 있으며, 기존 운영자 키의 실제 값은 `AX_ADMIN_SECRET`으로 옮겨 사용합니다. 운영자 도구 → 전체 조 다시 편성 → 날짜 선택 → 조 변경 안내 확인 → 전체 조 다시 편성으로 실행합니다. 최초 편성 후부터 당일 오전 11시 전까지 사용할 수 있습니다.
-
-현재 참석자와 현재 메뉴 선택을 기준으로 22시 최초 편성과 같은 알고리즘을 실행합니다. 이전 조는 해당 날짜에서 교체되며 별도의 만남 기록으로 남기지 않습니다. **오전 11시에 최종 확정된 마지막 조만 이후 편성의 만남 횟수·최근 만남에 반영합니다.** 감사 로그에는 실행자·날짜·실행 시각만 기록합니다.
-
-동시 참석·취소나 재편성 요청과 충돌하면 최신 버전을 다시 읽어 재계산합니다. DB 행 잠금 이후 시각을 다시 확인하므로 오전 11시를 넘겨 대기한 요청도 차단합니다. 재편성과 감사 로그는 한 트랜잭션으로 저장하며 기존 확정 기록과 신청 내역은 보존합니다. 조가 바뀔 수 있으므로 운영자는 참석자에게 최신 조를 다시 확인하도록 안내해야 합니다.
-
-
-### 4인 조 우선 정책
-
-최초 편성과 운영자 전체 재편성은 필수 메뉴 조건을 지키면서 소수 조 최소화 → 5인 조 최소화 → 3인 조 최소화 → 최근 재회 회피 → 누적 만남 횟수 최소화 → 메뉴 선호 순으로 비교합니다. 모든 도시락/외식 인원 분할을 검토해 최적 조 크기의 초기 후보를 확보하므로, 3~4인 구성이 가능한데도 반복 만남이나 메뉴 선호만을 이유로 5인 조를 선택하지 않습니다. 인원 예시는 필수 메뉴 제한이 없을 때 20명=4+4+4+4+4, 16명=4+4+4+4, 14명=4+4+3+3, 10명=4+3+3, 5명=5입니다. 전체 재편성 없이 추가 참석할 때는 기존 조원을 이동하지 않으므로 일시적으로 5인 조나 소수 대기 조가 생길 수 있습니다. DB 스키마 변경은 없습니다.
-
-
-### 조 미포함 인원 표시
-
-조 편성 결과와 지난 기록의 각 날짜 하단에는 전체 명단 중 어느 조에도 속하지 않은 인원을 표시합니다. 이름·소속·참석/불참/미응답·저장된 메뉴 선택을 함께 볼 수 있습니다. 조 필터는 조 카드에만 적용되며, 미포함 인원과 배정 집계는 전체 조를 기준으로 계산합니다. 최초 편성 전 참석자는 편성 대기, 편성 후 조가 없는 참석자는 미배정 확인 필요로 구분합니다. 불참·미응답 인원은 신청 상태를 유지합니다. 자동·전체 재편성은 참석자 전원의 중복 없는 배정을 확인한 후에만 결과를 반환합니다. DB 변경은 없습니다.
-
-최종 확정 전 참석자의 배정 누락은 상태 동기화 시 기존 조원을 이동하지 않고 자동 보완합니다. 최종 확정 기록은 수정하지 않고 확인 필요로 표시합니다. 같은 메뉴로 참석을 다시 저장하는 경우에도 누락된 배정을 복구합니다.
-
-
-### 선택 메뉴 및 불참 출처 표시
-
-조 카드와 선택 일정의 조원 목록에는 실제 배정 메뉴와 별개로 각 조원이 저장한 메뉴 조건을 표시합니다. 지난 기록도 해당 날짜의 저장된 선택을 사용하며, 선택 기록이 없으면 기록 없음으로 표시합니다.
-
-미포함 인원은 불참 선택·미선택·기본 불참을 구분하며 인원수도 집계합니다. 새 신청과 기본값 생성의 출처는 상태 JSON의 선택적 `choiceOrigins`에 기록합니다. 기존 12월 입사자 불참 중 직접 선택 여부를 알 수 없는 기록은 '불참 · 선택 여부 미확인'으로 표시하며 출처를 추정해 덮어쓰지 않습니다. 기존 선택 값과 최종 조 편성은 유지하며 추가 SQL은 필요하지 않습니다.
-
-
-### 결과 날짜와 명단 순서
-
-한국 시간 기준 13:00 전에는 당일, 13:00부터는 다음 운영일을 조 편성 결과의 기본 날짜로 표시합니다. 주말은 건너뛰며, 다음 운영일이 없는 운영 종료 시점에는 마지막 운영일을 유지합니다. 결과 화면을 열어둔 상태에서도 기준 시각을 넘기면 기본 날짜가 전환됩니다. 그 사이 직접 선택한 날짜는 자동 갱신으로 덮어쓰지 않으며, 일정 신청 날짜는 별도로 유지합니다. 조 미포함 명단은 기존 순서를 유지하면서 12월 입사자를 마지막으로 배치합니다. DB 변경은 없습니다.
-
-## AX Node + Global 운영 전환
-
-점검 모드 → 통합 SQL → `AX_INVITE_CODE` / `AX_ADMIN_SECRET` 이름 변경과 Global 변수 추가 → 재배포 순서입니다. **[CUTOVER_GUIDE.md](CUTOVER_GUIDE.md)**에 실행할 SQL 전체와 환경변수를 정리했습니다. 기존 계정·PIN·세션·신청·확정 기록을 보존하며, 기존 SQL을 아직 실행하지 않았어도 선행 업데이트가 포함됩니다.
+[코드리뷰·QA 기록](docs/REVIEW_QA.md)

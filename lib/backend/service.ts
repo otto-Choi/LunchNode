@@ -116,6 +116,7 @@ export function createBackend(options:Options) {
       for(let attempt=0;attempt<24;attempt++){
         const snap=await rpc<Snapshot>('lunch_snapshot',{p_token_hash:tokenHash(request),p_cron:false});const date=body.date;
         if(date!==snap.dates[0])throw new ApiError(400,'DATE','운영 첫날에만 최초 편성을 실행할 수 있습니다.');
+        if(new Date(snap.now)<matchTime(date))throw new ApiError(409,'NOT_MATCHED','전날 22시 이후에 최초 편성할 수 있습니다.');
         if(new Date(snap.now)>=cutoff(date))throw new ApiError(409,'CLOSED','오전 11시 마감 이후에는 실행할 수 없습니다.');
         const groups=initialMatch(snap.state,date,snap.people,Math.random,policy);
         if(await rpc<boolean>('lunch_admin_initial_match',{p_actor_token:tokenHash(request),p_expected_version:snap.version,p_date:date,p_groups:groups}))return response({ok:true,message:'운영 첫날 최초 편성을 완료했습니다.'});await delay();
@@ -137,7 +138,7 @@ export function createBackend(options:Options) {
       throw new ApiError(409,'BUSY','동시 요청이 많습니다. 잠시 후 다시 시도해 주세요.');
     }
     if(body.action==='recover'){
-      const result=await stateOperation(request,undefined,true);await rpc('lunch_cleanup',{});
+      const result=await stateOperation(request);await rpc('lunch_cleanup',{});
       await rpc('lunch_admin_recover_log',{p_actor_token:tokenHash(request)});
       return response({ok:true,message:'누락된 편성·마감 처리를 완료했습니다.',at:result.now});
     }
