@@ -196,12 +196,20 @@ test('single cutover upgrades an original pre-admin DB without any earlier rollo
   const stored={choices:{'2026-10-23':{[ROSTER[0].id]:{status:'join',meal:'outside'}}},days:{'2026-10-22':{phase:'final',matchedAt:'2026-10-21T22:00:00+09:00',groups:[{id:'preserved-final-group',meal:'outside',members:[ROSTER[0]]}]}},events:[]};
   await legacy.admin.query('update lunch_state set data=$1,version=17 where id=1',[stored]);
   const before=(await legacy.admin.query('select id,pin_hash,created_at from lunch_users order by id')).rows;
-  await legacy.admin.query(await fs.readFile('supabase/upgrade-shared-db.sql','utf8'));
+  await legacy.admin.query(await fs.readFile('supabase/upgrade-before-cutover.sql','utf8'));
   assert.deepEqual((await legacy.admin.query('select id,pin_hash,created_at from ax_lunch_users order by id')).rows,before);
   assert.deepEqual((await legacy.admin.query('select data,version from ax_lunch_state')).rows,[{data:stored,version:17}]);
   assert.equal((await legacy.rpc('ax_lunch_identity',{p_token_hash:digest(token)})).id,ROSTER[0].id);
   const info=await legacy.rpc('ax_lunch_tenant_info',{});assert.equal(info.startDate,'2026-10-22');assert.equal(info.endDate,'2026-11-30');
   assert.equal((await legacy.admin.query('select count(*)::int as n from global_lunch_roster')).rows[0].n,20);
+  const {GLOBAL_ROSTER}=await import('../lib/backend/global-roster.ts');
+  assert.deepEqual((await legacy.admin.query('select id,name,class_name as "className",default_status as "defaultStatus" from global_lunch_roster order by id')).rows,GLOBAL_ROSTER);
+  const registeredGlobal=await legacy.rpc('global_lunch_register',{p_name:'박인홍',p_pin_hash:await hashPin('654321'),p_token_hash:digest('global:first')});assert.equal(registeredGlobal.name,'박인홍');
+  const globalSnapshot=await legacy.rpc('global_lunch_snapshot',{p_token_hash:digest('global:first'),p_cron:false});assert.equal(globalSnapshot.people.length,20);assert.ok(globalSnapshot.people.every(p=>p.defaultStatus==='unset'));assert.ok(globalSnapshot.dates.length>0);
+  assert.equal(await legacy.rpc('ax_lunch_identity',{p_token_hash:digest('global:first')}),null);
+  for(const prefix of ['ax_','global_'])assert.equal((await legacy.admin.query(`select has_function_privilege('anon','${prefix}lunch_snapshot(text,boolean)','execute') as allowed`)).rows[0].allowed,false);
+  const signedState=(await legacy.admin.query('select data,version from ax_lunch_state')).rows;await legacy.admin.query(await fs.readFile('supabase/upgrade-shared-db.sql','utf8'));assert.deepEqual((await legacy.admin.query('select data,version from ax_lunch_state')).rows,signedState);
+
   const leftovers=(await legacy.admin.query("select proname from pg_proc where pronamespace='public'::regnamespace and starts_with(proname,'lunch_')")).rows;assert.deepEqual(leftovers,[]);
   // Verify a brand-new install uses the final namespaces from the outset.
   await legacy.admin.query('drop schema public cascade;create schema public');
