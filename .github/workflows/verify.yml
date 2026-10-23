@@ -25,6 +25,7 @@ jobs:
       DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/lunch_test
       ALLOW_DATABASE_RESET: '1'
       NEXT_TELEMETRY_DISABLED: '1'
+      PLAYWRIGHT_CHANNEL: chrome
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -35,7 +36,7 @@ jobs:
       - run: npm test
       - run: npm run test:db
       - run: npm run build
-      - run: npx playwright install --with-deps chromium
+      - run: google-chrome --version
       - run: npm run test:browser
       - uses: actions/upload-artifact@v4
         if: always()

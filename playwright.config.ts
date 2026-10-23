@@ -1,6 +1,6 @@
 import {defineConfig,devices} from '@playwright/test';
 export default defineConfig({
- testDir:'./tests/browser',workers:1,retries:0,use:{baseURL:'http://localhost:3000',trace:'retain-on-failure'},
+ testDir:'./tests/browser',workers:1,retries:0,use:{baseURL:'http://localhost:3000',trace:'retain-on-failure',...(process.env.PLAYWRIGHT_CHANNEL?{channel:process.env.PLAYWRIGHT_CHANNEL}:{})},
  reporter:[['list'],['html',{open:'never'}]],
  webServer:[
   {command:'node tests/rpc-bridge.mjs',url:'http://127.0.0.1:54329/health',reuseExistingServer:false},
