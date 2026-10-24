@@ -207,7 +207,7 @@ create table public.global_lunch_roster (
  default_status text not null default 'unset' check(default_status='unset'),
  constraint global_lunch_roster_allowed check ((name,class_name) in (
  ('류지환','IOA'),('박인홍','IOA'),('백재호','IOA'),('이상원','IOA'),
- ('이윤서','IOA'),('최유정','IOA'),('김현태','IOA'),('유영채','IOA'),
+ ('이은서','IOA'),('최유정','IOA'),('김현태','IOA'),('유영채','IOA'),
  ('유한혁','IOA'),('이다혜','IOA'),('이시연','IOA'),('정지우','IOA'),
  ('강준현','IPO'),('고수현','IPO'),('김혜진','IPO'),('마승희','IPO'),
  ('문채윤','IPO'),('윤두하','IPO'),('곽종우','IPO'),('이기하','IPO')))
@@ -216,7 +216,7 @@ insert into public.global_lunch_roster(id,name,class_name)
 select ('10000000-0000-4000-8000-'||lpad(n::text,12,'0'))::uuid,name,division
 from (values
  (1,'류지환','IOA'),(2,'박인홍','IOA'),(3,'백재호','IOA'),(4,'이상원','IOA'),
- (5,'이윤서','IOA'),(6,'최유정','IOA'),(7,'김현태','IOA'),(8,'유영채','IOA'),
+ (5,'이은서','IOA'),(6,'최유정','IOA'),(7,'김현태','IOA'),(8,'유영채','IOA'),
  (9,'유한혁','IOA'),(10,'이다혜','IOA'),(11,'이시연','IOA'),(12,'정지우','IOA'),
  (13,'강준현','IPO'),(14,'고수현','IPO'),(15,'김혜진','IPO'),(16,'마승희','IPO'),
  (17,'문채윤','IPO'),(18,'윤두하','IPO'),(19,'곽종우','IPO'),(20,'이기하','IPO')
@@ -316,5 +316,64 @@ grant execute on function
  public.global_lunch_record_job(boolean,text),
  public.global_lunch_system_status()
  to service_role;
+set local lock_timeout = '15s';
+do $correction$
+declare
+ person_id uuid; fk record; definition text; saved_fks jsonb='[]'::jsonb;
+ current_data jsonb; corrected_data jsonb; member record;
+begin
+ if to_regclass('public.global_lunch_roster') is null then return; end if;
+ perform pg_advisory_xact_lock(610230901);
+ lock table public.global_lunch_state,public.global_lunch_users,public.global_lunch_roster in access exclusive mode;
+ if exists(select 1 from public.global_lunch_roster where name='이윤서')
+ and exists(select 1 from public.global_lunch_roster where name='이은서') then
+  raise exception 'Both spellings exist. No changes made; review identities first.';
+ end if;
+ select id into person_id from public.global_lunch_roster where name in ('이윤서','이은서') and class_name='IOA';
+ if person_id is null then raise exception 'Expected Global IOA participant was not found. No changes made.'; end if;
+ select pg_get_constraintdef(oid) into definition from pg_constraint
+ where conrelid='public.global_lunch_roster'::regclass and conname='global_lunch_roster_allowed';
+ if definition is null then raise exception 'Global roster constraint was not found. No changes made.'; end if;
+ if strpos(definition,'이윤서')>0 then
+  alter table public.global_lunch_roster drop constraint global_lunch_roster_allowed;
+ end if;
+ for fk in select c.conname,pg_get_constraintdef(c.oid) as body from pg_constraint c
+ where c.conrelid='public.global_lunch_users'::regclass and c.confrelid='public.global_lunch_roster'::regclass
+ and c.contype='f' and c.conkey=array[(select attnum from pg_attribute where attrelid='public.global_lunch_users'::regclass and attname='name')]::smallint[]
+ loop
+  saved_fks:=saved_fks||jsonb_build_array(jsonb_build_object('name',fk.conname,'body',fk.body));
+  execute format('alter table public.global_lunch_users drop constraint %I',fk.conname);
+ end loop;
+ update public.global_lunch_roster set name='이은서' where id=person_id and name='이윤서';
+ update public.global_lunch_users set name='이은서' where id=person_id and name='이윤서';
+ if strpos(definition,'이윤서')>0 then
+   execute 'alter table public.global_lunch_roster add constraint global_lunch_roster_allowed '||replace(definition,'이윤서','이은서');
+ end if;
+ for fk in select value->>'name' as name,value->>'body' as body from jsonb_array_elements(saved_fks) loop
+  execute format('alter table public.global_lunch_users add constraint %I %s',fk.name,fk.body);
+ end loop;
+ select data into current_data from public.global_lunch_state where id=1;
+ corrected_data:=current_data;
+ for member in
+  select d.key as day,(g.ordinality-1)::text as group_index,(m.ordinality-1)::text as member_index
+  from jsonb_each(coalesce(current_data->'days','{}'::jsonb)) d
+  cross join lateral jsonb_array_elements(coalesce(d.value->'groups','[]'::jsonb)) with ordinality g(value,ordinality)
+  cross join lateral jsonb_array_elements(coalesce(g.value->'members','[]'::jsonb)) with ordinality m(value,ordinality)
+  where m.value->>'id'=person_id::text and m.value->>'name'='이윤서'
+ loop
+  corrected_data:=jsonb_set(corrected_data,array['days',member.day,'groups',member.group_index,'members',member.member_index,'name'],to_jsonb('이은서'::text),false);
+ end loop;
+ if corrected_data is distinct from current_data then
+  update public.global_lunch_state set data=corrected_data,version=version+1 where id=1;
+ end if;
+ execute $ddl$create or replace function public.global_lunch_tenant_info()
+ returns jsonb language sql stable security definer set search_path=public as $body$
+ select jsonb_build_object('tenant',tenant_key,'startDate',start_date,'endDate',end_date,'capabilities',3,'globalRosterRevision',1)
+ from public.global_lunch_settings where id=1;
+ $body$;$ddl$;
+ revoke all on function public.global_lunch_tenant_info() from public,anon,authenticated;
+ grant execute on function public.global_lunch_tenant_info() to service_role;
+end $correction$;
+notify pgrst,'reload schema';
 notify pgrst,'reload schema';
 commit;

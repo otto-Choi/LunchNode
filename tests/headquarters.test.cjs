@@ -8,7 +8,7 @@ async function fixture(){
  const stores={ax:{people:ROSTER,tenant:'ax'},global:{people:GLOBAL_ROSTER,tenant:'global'}};
  for(const st of Object.values(stores))Object.assign(st,{users:new Map(),sessions:new Map(),state:{choices:{},days:{},events:[]},version:0,jobs:[]});
  const rpcFactory=(url,key)=>{assert.equal(url,'https://ax.test');assert.equal(key,'ax-service');return async(name,a)=>{calls.push(name);const isGlobal=name.startsWith('global_lunch_');if(!isGlobal&&name.startsWith('ax_')){if(stores.ax.legacy)throw new ApiError(503,'RPC_MISSING','Missing');name=name.slice(3);}const st=stores[isGlobal?'global':'ax'];if(isGlobal)name=name.slice(7);if(st.fail)throw Error('unavailable');switch(name){
- case 'lunch_tenant_info':return {tenant:st.tenant};case 'lunch_rate_limit':return true;
+ case 'lunch_tenant_info':return {tenant:st.tenant,...(isGlobal?{globalRosterRevision:st.rosterRevision??1}:{})};case 'lunch_rate_limit':return true;
  case 'lunch_identity':return st.sessions.get(a.p_token_hash)||null;
  case 'lunch_register':{const p=st.people.find(p=>p.name===a.p_name);st.users.set(p.id,p);st.sessions.set(a.p_token_hash,p);return p;}
  case 'lunch_snapshot':return {people:st.people,dates:['2026-10-26'],state:structuredClone(st.state),version:st.version,user:st.sessions.get(a.p_token_hash),now:'2026-10-23T12:00:00+09:00'};
@@ -59,4 +59,19 @@ test('maintenance blocks logins, state writes, operator actions and cron before 
  const f=await fixture();f.env.MAINTENANCE_MODE='true';
  for(const endpoint of ['auth','state','admin','profile','cron','tenants']){const result=await f.call(endpoint,'ax',endpoint==='state'?{dates:[],choice:{status:'join',meal:'any'}}:undefined);assert.equal(result.status,503);assert.equal((await result.json()).code,'MAINTENANCE');}
  assert.equal(f.calls.length,0);
+});
+
+test('Global roster correction supports both the pre-SQL and corrected DB without a roster outage',async()=>{
+ const f=await fixture();f.stores.global.rosterRevision=0;
+ f.stores.global.people=f.stores.global.people.map(p=>p.name==='이은서'?{...p,name:'이윤서'}:p);
+ const gate=await f.unlock('global');
+ let people=(await (await f.call('auth','global',{action:'roster'},gate)).json()).people;
+ assert.ok(people.some(p=>p.name==='이윤서'));
+ const login=await f.call('auth','global',{action:'register',name:'박인홍',pin:'123456'},gate);
+ const cookie=login.headers.get('set-cookie').split(';')[0];
+ assert.equal((await f.call('state','global',undefined,cookie)).status,200);
+ f.stores.global.rosterRevision=1;f.stores.global.people=f.stores.global.people.map(p=>p.name==='이윤서'?{...p,name:'이은서'}:p);
+ people=(await (await f.call('auth','global',{action:'roster'},gate)).json()).people;
+ assert.ok(people.some(p=>p.name==='이은서'));assert.ok(!people.some(p=>p.name==='이윤서'));
+ assert.equal((await f.call('state','global',undefined,cookie)).status,200);
 });

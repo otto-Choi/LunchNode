@@ -217,3 +217,41 @@ test('single cutover upgrades an original pre-admin DB without any earlier rollo
   assert.equal((await legacy.rpc('ax_lunch_tenant_info',{})).tenant,'ax');assert.equal((await legacy.rpc('global_lunch_tenant_info',{})).tenant,'global');
  }finally{await legacy.close();await db.admin.query(`drop database ${databaseName}`);}
 });
+
+test('Global spelling correction preserves registered identity, PIN, sessions, choices and AX data; reruns safely',async()=>{
+ const databaseName='lunch_global_name_correction_test';await db.admin.query(`create database ${databaseName}`);
+ const url=new URL(process.env.DATABASE_URL);url.pathname='/'+databaseName;const original=databasePools(url.toString());
+ try{
+  // Reproduce the already deployed, immutable historical Global installation.
+  for(const file of files)await original.admin.query(await fs.readFile('supabase/migrations/'+file,'utf8'));
+  const installer=(await fs.readFile('supabase/migrations/20261023090100_global_tables.sql','utf8')).replaceAll('clock_timestamp()',"'2026-10-23T09:00:00+09:00'::timestamptz");
+  await original.admin.query(installer);
+  const token='e'.repeat(64),pinHash=await hashPin('123456');
+  const person=await original.rpc('global_lunch_register',{p_name:'이윤서',p_pin_hash:pinHash,p_token_hash:digest('global:'+token)});
+  const state={choices:{'2026-10-23':{[person.id]:{status:'join',meal:'any'}}},days:{'2026-10-23':{phase:'final',matchedAt:'2026-10-22T22:00:00+09:00',groups:[{id:'unchanged-group',meal:'outside',members:[person]}]}},events:[]};
+  await original.admin.query('update global_lunch_state set data=$1,version=37 where id=1',[state]);
+  const beforeAccount=(await original.admin.query('select id,pin_hash,created_at from global_lunch_users')).rows;
+  const beforeSession=(await original.admin.query('select * from global_lunch_sessions')).rows;
+  const beforeAX=(await original.admin.query('select * from lunch_state')).rows;
+  const migration=await fs.readFile('supabase/migrations/20261024090000_global_name_correction.sql','utf8');
+  await original.admin.query(migration);
+  assert.deepEqual((await original.admin.query('select id,pin_hash,created_at from global_lunch_users')).rows,beforeAccount);
+  assert.deepEqual((await original.admin.query('select * from global_lunch_sessions')).rows,beforeSession);
+  assert.deepEqual((await original.admin.query('select * from lunch_state')).rows,beforeAX);
+  assert.equal((await original.rpc('global_lunch_identity',{p_token_hash:digest('global:'+token)})).name,'이은서');
+  assert.equal((await original.rpc('global_lunch_credentials',{p_name:'이은서'})).pin_hash,pinHash);
+  assert.equal(await original.rpc('global_lunch_credentials',{p_name:'이윤서'}),null);
+  const expected=structuredClone(state);expected.days['2026-10-23'].groups[0].members[0].name='이은서';
+  assert.deepEqual((await original.admin.query('select data,version from global_lunch_state')).rows,[{data:expected,version:38}]);
+  assert.equal((await original.rpc('global_lunch_tenant_info',{})).globalRosterRevision,1);
+  await original.admin.query(migration);
+  assert.deepEqual((await original.admin.query('select data,version from global_lunch_state')).rows,[{data:expected,version:38}]);
+  // The current rerunnable installer must retain corrected accounts and settings.
+  await original.admin.query(await fs.readFile('supabase/global-schema.sql','utf8'));
+  assert.deepEqual((await original.admin.query('select id,pin_hash,created_at from global_lunch_users')).rows,beforeAccount);
+  assert.equal((await original.rpc('global_lunch_credentials',{p_name:'이은서'})).pin_hash,pinHash);
+  await assert.rejects(original.admin.query("update global_lunch_roster set name='이윤서' where name='이은서'"));
+  const fk=(await original.admin.query("select count(*)::int as n from pg_constraint where conrelid='global_lunch_users'::regclass and confrelid='global_lunch_roster'::regclass and contype='f'")).rows[0].n;
+  assert.ok(fk>=2);
+ }finally{await original.close();await db.admin.query(`drop database ${databaseName}`);}
+});

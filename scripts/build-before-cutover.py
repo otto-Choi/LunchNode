@@ -28,7 +28,7 @@ create table public.global_lunch_roster (
  default_status text not null default 'unset' check(default_status='unset'),
  constraint global_lunch_roster_allowed check ((name,class_name) in (
  ('류지환','IOA'),('박인홍','IOA'),('백재호','IOA'),('이상원','IOA'),
- ('이윤서','IOA'),('최유정','IOA'),('김현태','IOA'),('유영채','IOA'),
+ ('이은서','IOA'),('최유정','IOA'),('김현태','IOA'),('유영채','IOA'),
  ('유한혁','IOA'),('이다혜','IOA'),('이시연','IOA'),('정지우','IOA'),
  ('강준현','IPO'),('고수현','IPO'),('김혜진','IPO'),('마승희','IPO'),
  ('문채윤','IPO'),('윤두하','IPO'),('곽종우','IPO'),('이기하','IPO')))
@@ -37,7 +37,7 @@ insert into public.global_lunch_roster(id,name,class_name)
 select ('10000000-0000-4000-8000-'||lpad(n::text,12,'0'))::uuid,name,division
 from (values
  (1,'류지환','IOA'),(2,'박인홍','IOA'),(3,'백재호','IOA'),(4,'이상원','IOA'),
- (5,'이윤서','IOA'),(6,'최유정','IOA'),(7,'김현태','IOA'),(8,'유영채','IOA'),
+ (5,'이은서','IOA'),(6,'최유정','IOA'),(7,'김현태','IOA'),(8,'유영채','IOA'),
  (9,'유한혁','IOA'),(10,'이다혜','IOA'),(11,'이시연','IOA'),(12,'정지우','IOA'),
  (13,'강준현','IPO'),(14,'고수현','IPO'),(15,'김혜진','IPO'),(16,'마승희','IPO'),
  (17,'문채윤','IPO'),(18,'윤두하','IPO'),(19,'곽종우','IPO'),(20,'이기하','IPO')
@@ -141,6 +141,9 @@ grant execute on function
 notify pgrst,'reload schema';
 commit;
 '''
+correction=(r/'supabase/migrations/20261024090000_global_name_correction.sql').read_text()
+correction=re.sub(r'(?m)^(begin;|commit;)\s*$','',correction)
+global_sql=global_sql.replace("notify pgrst,'reload schema';",correction+"\nnotify pgrst,'reload schema';")
 s=start+rename+'\n'+ops+'\n'+global_sql
 # Remove comments and blank lines only; keep all executable text intact.
 s='\n'.join(line for line in s.splitlines() if line.strip() and not line.lstrip().startswith('--'))+'\n'

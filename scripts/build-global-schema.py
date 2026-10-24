@@ -1,12 +1,14 @@
 from pathlib import Path
 import re
 root=Path(__file__).resolve().parents[1]
+correction=(root/'supabase/migrations/20261024090000_global_name_correction.sql').read_text()
+correction=re.sub(r'(?m)^(begin;|commit;)\s*$','',correction)
 # Generate Global tables/RPCs alongside AX inside the SAME public schema.
 migrations=[p for p in sorted((root/'supabase/migrations').glob('*.sql')) if p.name<'20261023090100']
 (root/'supabase/schema.sql').write_text('\n'.join(p.read_text() for p in migrations))
 # Produce rerunnable, namespaced Global tables using the same audited server RPCs.
 axnames=['권도영','김서영','손규영','김민국','김상규','안소이','유태상','최철원','김주연','박서연','박진홍','양우진','장은영','김영탁','부유경','서유빈','오성현','김범준','박대원','박진영']
-rows=[('류지환','IOA'),('박인홍','IOA'),('백재호','IOA'),('이상원','IOA'),('이윤서','IOA'),('최유정','IOA'),('김현태','IOA'),('유영채','IOA'),('유한혁','IOA'),('이다혜','IOA'),('이시연','IOA'),('정지우','IOA'),('강준현','IPO'),('고수현','IPO'),('김혜진','IPO'),('마승희','IPO'),('문채윤','IPO'),('윤두하','IPO'),('곽종우','IPO'),('이기하','IPO')]
+rows=[('류지환','IOA'),('박인홍','IOA'),('백재호','IOA'),('이상원','IOA'),('이은서','IOA'),('최유정','IOA'),('김현태','IOA'),('유영채','IOA'),('유한혁','IOA'),('이다혜','IOA'),('이시연','IOA'),('정지우','IOA'),('강준현','IPO'),('고수현','IPO'),('김혜진','IPO'),('마승희','IPO'),('문채윤','IPO'),('윤두하','IPO'),('곽종우','IPO'),('이기하','IPO')]
 text=(root/'supabase/schema.sql').read_text()
 # Replace each per-person canonical seed/constraint row based on its canonical name.
 for i,(old,(name,group)) in enumerate(zip(axnames,rows),1):
@@ -66,10 +68,10 @@ do $guard$ begin
  end if;
 end $guard$;
 """
-(root/'supabase/global-schema.sql').write_text(new_guard+text)
+(root/'supabase/global-schema.sql').write_text(new_guard+correction+text.replace('notify pgrst,',correction+"\nnotify pgrst,",1))
 rename=(root/'supabase/ax-rename.sql').read_text()
 # One transaction: rename existing objects, refresh all namespaced functions, add Global.
-body=new_guard+text
+body=new_guard+correction+text.replace('notify pgrst,',correction+"\nnotify pgrst,",1)
 body=re.sub(r'(?m)^begin;\s*$','',body)
 body=re.sub(r'(?m)^commit;\s*$','',body)
 upgrade='-- ONE EXISTING SUPABASE PROJECT: rename AX objects and add Global atomically.\nbegin;\n'+rename+'\n'+ax_text+'\n'+body+"\nnotify pgrst, 'reload schema';\ncommit;\n"
