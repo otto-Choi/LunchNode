@@ -255,3 +255,19 @@ test('Global spelling correction preserves registered identity, PIN, sessions, c
   assert.ok(fk>=2);
  }finally{await original.close();await db.admin.query(`drop database ${databaseName}`);}
 });
+
+test('Global correction before first registration retains the participant ID and invalidates stale empty snapshots',async()=>{
+ const databaseName='lunch_global_unregistered_name_test';await db.admin.query(`create database ${databaseName}`);
+ const url=new URL(process.env.DATABASE_URL);url.pathname='/'+databaseName;const original=databasePools(url.toString());
+ try{
+  for(const file of files)await original.admin.query(await fs.readFile('supabase/migrations/'+file,'utf8'));
+  await original.admin.query((await fs.readFile('supabase/migrations/20261023090100_global_tables.sql','utf8')).replaceAll('clock_timestamp()',"'2026-10-23T09:00:00+09:00'::timestamptz"));
+  const before=(await original.admin.query('select id from global_lunch_roster where name=$1',['이윤서'])).rows[0];
+  const state=(await original.admin.query('select data from global_lunch_state')).rows[0].data;
+  const correction=await fs.readFile('supabase/migrations/20261024090000_global_name_correction.sql','utf8');await original.admin.query(correction);
+  assert.deepEqual((await original.admin.query('select id from global_lunch_roster where name=$1',['이은서'])).rows[0],before);
+  assert.deepEqual((await original.admin.query('select data,version from global_lunch_state')).rows,[{data:state,version:1}]);
+  await original.admin.query(correction);assert.equal((await original.admin.query('select version from global_lunch_state')).rows[0].version,1);
+  const registered=await original.rpc('global_lunch_register',{p_name:'이은서',p_pin_hash:await hashPin('123456'),p_token_hash:digest('new-name-session')});assert.equal(registered.id,before.id);
+ }finally{await original.close();await db.admin.query(`drop database ${databaseName}`);}
+});

@@ -319,7 +319,7 @@ grant execute on function
 set local lock_timeout = '15s';
 do $correction$
 declare
- person_id uuid; fk record; definition text; saved_fks jsonb='[]'::jsonb;
+ person_id uuid; identity_changed boolean; fk record; definition text; saved_fks jsonb='[]'::jsonb;
  current_data jsonb; corrected_data jsonb; member record;
 begin
  if to_regclass('public.global_lunch_roster') is null then return; end if;
@@ -329,6 +329,7 @@ begin
  and exists(select 1 from public.global_lunch_roster where name='이은서') then
   raise exception 'Both spellings exist. No changes made; review identities first.';
  end if;
+ select exists(select 1 from public.global_lunch_roster where name='이윤서') into identity_changed;
  select id into person_id from public.global_lunch_roster where name in ('이윤서','이은서') and class_name='IOA';
  if person_id is null then raise exception 'Expected Global IOA participant was not found. No changes made.'; end if;
  select pg_get_constraintdef(oid) into definition from pg_constraint
@@ -363,7 +364,7 @@ begin
  loop
   corrected_data:=jsonb_set(corrected_data,array['days',member.day,'groups',member.group_index,'members',member.member_index,'name'],to_jsonb('이은서'::text),false);
  end loop;
- if corrected_data is distinct from current_data then
+ if identity_changed or corrected_data is distinct from current_data then
   update public.global_lunch_state set data=corrected_data,version=version+1 where id=1;
  end if;
  execute $ddl$create or replace function public.global_lunch_tenant_info()
