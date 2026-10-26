@@ -1,0 +1,16 @@
+name: Prepare Group Node migration
+on:
+  push:
+    branches: [group-node]
+permissions:
+  contents: read
+jobs:
+  migration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npx --yes supabase@2.81.3 --help
+      - run: npx --yes supabase@2.81.3 migration new group_node
