@@ -273,7 +273,7 @@ test('Global correction before first registration retains the participant ID and
 });
 
 test('Group Node shares public meetups across headquarters but isolates private meetings and all ownership writes',async()=>{
- await db.admin.query(await fs.readFile('supabase/migrations/20261026121503_group_node.sql','utf8'));
+ await db.admin.query(await fs.readFile('supabase/migrations/20261026124241_group_node.sql','utf8'));
  const axHash=digest('group-ax'),globalHash=digest('group-global'),otherHash=digest('group-other');
  for(const [prefix,name,hash] of [['ax',ROSTER[0].name,axHash],['ax',ROSTER[1].name,otherHash],['global','류지환',globalHash]]){
   const c=await db.rpc(prefix+'_lunch_credentials',{p_name:name});assert.ok(c);

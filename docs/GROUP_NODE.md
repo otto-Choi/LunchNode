@@ -27,7 +27,7 @@
 
 모든 새 테이블에 RLS를 켜고 anon·authenticated·service_role의 직접 테이블 접근은 차단합니다. 비공개 함수는 고정된 빈 search_path를 사용합니다. 서비스 전용 API에만 실행 권한을 주며 DB에서도 매 요청 기존 본부 세션을 확인합니다. 같은 모임의 쓰기는 행 잠금으로 직렬화하고 모임장 편집·삭제·확정에는 버전 검사를 적용합니다. 생성과 날짜 저장, 날짜 수정·투표 초기화는 하나의 트랜잭션입니다.
 
-DB 설치 파일: [`supabase/migrations/20261026121503_group_node.sql`](../supabase/migrations/20261026121503_group_node.sql). Supabase CLI의 `migration new group_node`로 생성한 이력을 사용합니다. 기존 DB 또는 신규 `schema.sql` 설치 후 이 추가 마이그레이션을 한 번 적용합니다. 새로운 환경변수는 필요 없습니다.
+DB 설치 파일: [`supabase/migrations/20261026124241_group_node.sql`](../supabase/migrations/20261026124241_group_node.sql). Supabase CLI의 `migration new group_node`로 초안을 생성한 뒤, MCP로 운영에 적용된 버전 `20261026124241`에 파일명을 동기화했습니다. 기존 DB 또는 신규 `schema.sql` 설치 후 이 추가 마이그레이션을 한 번 적용합니다. 새로운 환경변수는 필요 없습니다.
 
 ## 원본 앱
 
@@ -42,3 +42,9 @@ ZIP에는 실제 모임·댓글 데이터 내보내기 파일과 원본 DB 접�
 `tests/database.test.mjs`: 실제 PostgreSQL에서 본부 간 공유·전용 모임 차단, 참여·투표·댓글 권한, 확정·수정 충돌, 후보 변경 시 투표 초기화, 참여 취소 시 투표 제거, 직접 DB 접근 차단, 점심 상태 보존을 검증합니다.
 
 `tests/browser/group-node.spec.ts`: PC·모바일에서 생성→타 본부 참여→투표→댓글→모임장 확정→내 모임→서비스 전환→삭제와 모바일 메뉴를 확인합니다. 기존 점심 브라우저 QA도 함께 실행합니다.
+
+## 운영 적용 기록 · 2026-10-26
+
+공통 Supabase 프로젝트에 추가 마이그레이션을 적용했습니다. 적용 직전·직후 AX 계정 18개와 Global 계정 20개, 각 본부의 점심 상태 버전·전체 상태 체크섬이 일치했습니다. 새 5개 테이블의 RLS와 서버 전용 API 실행 권한을 확인했습니다. 보안 Advisor의 WARN/ERROR는 없고, INFO 수준의 RLS 정책 없음은 직접 테이블 접근을 차단하고 검증된 서버 RPC만 사용하는 의도된 구성입니다. [해당 안내](https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy).
+
+새 API·UI 코드에 대해 단위 테스트 82개, PostgreSQL 통합 테스트 14개, PC·모바일 브라우저 테스트 30개가 통과했습니다. 타입 검사·프로덕션 빌드·운영 의존성 검사도 통과했습니다. 최종 main CI는 공개 운영 주소의 본부 목록·로그인 필요 상태·Group Node 인증 차단도 읽기 전용으로 확인합니다.
