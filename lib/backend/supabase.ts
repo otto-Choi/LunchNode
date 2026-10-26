@@ -10,7 +10,7 @@ export function supabaseRpc(url:string,key:string,fetcher:typeof fetch=fetch):Rp
     if(!result.ok){
       const error=data as {code?:string;message?:string};
       if(error.code==='PGRST202'||error.code==='42883')throw new ApiError(503,'RPC_MISSING','DB 업데이트가 필요합니다.');
-      const statuses:Record<string,number>={LN400:400,LN401:401,LN409:409,LN503:503};
+      const statuses:Record<string,number>={LN400:400,LN401:401,LN403:403,LN404:404,LN409:409,LN503:503};
       if(error.code&&statuses[error.code])throw new ApiError(statuses[error.code],error.code,error.message||'요청에 실패했습니다.');
       throw new ApiError(503,'DATABASE','DB 스키마와 연결 설정을 확인해 주세요.');
     }

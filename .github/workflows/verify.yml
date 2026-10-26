@@ -45,6 +45,10 @@ jobs:
       - run: npm run build
       - run: google-chrome --version
       - run: npm run test:browser
+      - name: Verify public production API after deployment
+        if: github.ref == 'refs/heads/main'
+        timeout-minutes: 3
+        run: node scripts/smoke-production.mjs
       - uses: actions/upload-artifact@v4
         if: always()
         with:

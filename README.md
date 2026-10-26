@@ -1,6 +1,8 @@
-# 런치노드 · LunchNode
+# Lunch Node · Group Node
 
-모바일과 PC에서 점심 참석 여부와 메뉴를 신청하고, 조 편성 결과를 확인하는 Next.js 앱입니다.
+모바일과 PC에서 점심 신청·조 편성과 동기 소모임을 함께 이용하는 Next.js 앱입니다.
+
+[Group Node 기능·구조·DB 설치·QA](docs/GROUP_NODE.md)를 참고하세요. 기존 Lunch Node는 주황색, Group Node는 하늘색으로 구분하며 같은 계정으로 전환합니다.
 
 - 서비스: https://lunch-node.vercel.app/
 - 본부: **AX Node**, **Global**. 본부 선택 → 초대 코드 확인 → 이름 선택 → 숫자 6자리 PIN으로 등록·로그인합니다.
