@@ -1,0 +1,62 @@
+'use client';
+import {useEffect,useRef,useState} from 'react';
+import {api} from '@/lib/client/api';
+import {headquartersLabel,type HeadquartersId} from '@/lib/headquarters';
+import {CATEGORIES,sameMember,type Member,type Meetup,type MeetupDetail,type MeetupInput,type GroupView} from '@/lib/group-node/types';
+import MeetupEditor from './meetup-editor';
+type ListResult={meetups:Meetup[];total:number;now:string};
+const dateLabel=(date:string,time:string|null)=>new Intl.DateTimeFormat('ko-KR',{month:'long',day:'numeric',weekday:'short',timeZone:'Asia/Seoul'}).format(new Date(`${date}T12:00:00+09:00`))+(time?` · ${time}`:' · 시간 미정');
+const currentId=()=>typeof window==='undefined'?null:new URLSearchParams(window.location.search).get('meetup');
+function PersonLabel({person}:{person:Member}){return <span className="gn-person"><strong>{person.name}</strong><small>{headquartersLabel(person.tenant)} · {person.className}</small></span>;}
+function Status({meetup}:{meetup:Meetup}){return <span className={`gn-badge ${meetup.status==='confirmed'?'confirmed':''}`}>{meetup.status==='cancelled'?'취소됨':meetup.status==='confirmed'?'날짜 확정':meetup.participants.length>=meetup.minPeople?'최소 인원 충족':'모집 중'}</span>;}
+export default function GroupNode({user,tenant,active,view,navigation,demo=false,onAuthExpired}:{user:{id:string;name:string};tenant:HeadquartersId;active:boolean;view:GroupView;navigation:number;demo?:boolean;onAuthExpired:()=>void}) {
+ const me={id:user.id,tenant};const [list,setList]=useState<ListResult|null>(null);const [detail,setDetail]=useState<MeetupDetail|null>(null);
+ const [id,setId]=useState<string|null>(currentId);const [editor,setEditor]=useState(false);const [category,setCategory]=useState('');const [query,setQuery]=useState('');const [search,setSearch]=useState('');const [onlyHQ,setOnlyHQ]=useState(false);const [page,setPage]=useState(0);
+ const [busy,setBusy]=useState(false);const [loading,setLoading]=useState(false);const [error,setError]=useState('');const [notice,setNotice]=useState('');const [comment,setComment]=useState('');const requestSequence=useRef(0);const firstNavigation=useRef(true);
+ function navigate(next:string|null,push=true){setId(next);setDetail(null);setEditor(false);setError('');setComment('');requestSequence.current++;if(push){const url=new URL(window.location.href);url.searchParams.set('service','group');if(next)url.searchParams.set('meetup',next);else url.searchParams.delete('meetup');window.history.pushState({},'',url);}}
+ useEffect(()=>{const back=()=>navigate(currentId(),false);window.addEventListener('popstate',back);return()=>window.removeEventListener('popstate',back);},[]);
+ useEffect(()=>{if(firstNavigation.current){firstNavigation.current=false;return;}navigate(null);setPage(0);},[view,navigation]);
+ useEffect(()=>{const timer=setTimeout(()=>{setSearch(query);setPage(0);},250);return()=>clearTimeout(timer);},[query]);
+ async function load(){if(!active||demo)return;const seq=++requestSequence.current;setLoading(true);try{
+  const params=id?new URLSearchParams({id}):new URLSearchParams({view,category,q:search,onlyHeadquarters:String(onlyHQ),offset:String(page*20)});
+  const result=await api('/api/group-node?'+params,undefined,tenant);if(seq!==requestSequence.current)return;
+  if(id)setDetail(result);else setList(result);setError('');
+ }catch(e){if(seq!==requestSequence.current)return;setError((e as Error).message);if((e as Error&{status?:number}).status===401)onAuthExpired();}finally{if(seq===requestSequence.current)setLoading(false);}}
+ useEffect(()=>{if(!active||editor)return;void load();const timer=setInterval(()=>{if(document.visibilityState==='visible')void load();},15000);const focus=()=>void load();window.addEventListener('focus',focus);return()=>{clearInterval(timer);window.removeEventListener('focus',focus);requestSequence.current++;};},[active,tenant,id,view,category,search,onlyHQ,page,editor]);
+ async function mutate(action:string,input:Record<string,unknown>={}){setBusy(true);setError('');requestSequence.current++;try{
+  const result=await api('/api/group-node',{action,...(detail?{id:detail.id,version:detail.version}:{}),...input},tenant);
+  if(action==='delete'){navigate(null);setNotice('모임을 삭제했습니다.');}
+  else{if(action==='create'){navigate(result.id);setNotice('모임을 만들었습니다.');}setDetail(result);setId(result.id);setEditor(false);if(action==='comment')setComment('');}
+  return true;
+ }catch(e){setError((e as Error).message);if((e as Error&{status?:number}).status===401)onAuthExpired();return false;}finally{setBusy(false);}}
+ const owner=detail&&sameMember(detail.proposer,me);const joined=detail?.participants.some(p=>sameMember(p,me));
+ const today=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Seoul',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+ const closed=detail&&(detail.status==='cancelled'||detail.dates.every(d=>d.date<today));const maxVotes=Math.max(0,...(detail?.dates.map(d=>d.voters.length)||[]));
+ const save=(input:MeetupInput)=>void mutate(id?'update':'create',input as unknown as Record<string,unknown>);
+ return <section className="group-node" aria-label="Group Node 소모임">
+  <div className="gn-heading"><div><span className="gn-kicker">GROUP NODE</span><h1>{editor?(id?'모임 수정':'모임 만들기'):id?'모임 상세':view==='mine'?'내 모임':view==='past'?'지난 모임':'모임 둘러보기'}</h1><p>AX Node와 Global, 함께 모이는 곳</p></div>{!id&&!editor&&<button className="gn-primary" onClick={()=>{setEditor(true);setError('');}} disabled={demo}>+ 모임 만들기</button>}</div>
+  {demo?<p className="gn-empty">소모임은 실제 계정으로 로그인하면 이용할 수 있습니다.</p>:<>
+  {error&&<div className="gn-error" role="alert">{error}<button className="gn-secondary" onClick={()=>void load()}>다시 불러오기</button></div>}
+  {notice&&<p role="status" className="gn-notice">{notice}</p>}
+  {editor?<MeetupEditor initial={id?detail||undefined:undefined} busy={busy} onSave={save} onCancel={()=>setEditor(false)}/>:id?<>
+   <button className="gn-back" onClick={()=>navigate(null)}>← 목록으로</button>
+   {!detail?<p className="gn-empty">{loading?'모임을 불러오는 중…':'모임 정보를 불러올 수 없습니다.'}</p>:<>
+    <div className="gn-detail-layout"><div><article className="gn-panel gn-detail"><div className="gn-card-tags"><span>{CATEGORIES[detail.category]}</span><span>{detail.visibility==='all'?'전체 본부':`${headquartersLabel(detail.proposer.tenant)} 전용`}</span><Status meetup={detail}/></div><h2>{detail.title}</h2><PersonLabel person={detail.proposer}/><p className="gn-description">{detail.description||'등록된 설명이 없습니다.'}</p>
+     <div className="gn-section-heading"><h3>참여자 <small>{detail.participants.length}명 / 최소 {detail.minPeople}명</small></h3>{!closed&&<button className={joined?'gn-secondary':'gn-primary'} disabled={busy} onClick={()=>void mutate(joined?'leave':'join')}>{joined?'참여 취소':'참여하기'}</button>}</div>
+     {detail.status==='confirmed'&&detail.participants.length<detail.minPeople&&<p className="gn-muted">날짜는 확정됐지만 현재 참여 인원이 최소 인원보다 적습니다.</p>}
+     <div className="gn-people">{detail.participants.map(p=><PersonLabel key={p.tenant+p.id} person={p}/>)}{!detail.participants.length&&<p className="gn-muted">첫 참여자가 되어 주세요.</p>}</div>
+     <div className="gn-section-heading"><h3>날짜 투표</h3><span className="gn-muted">가능한 날짜 모두 선택</span></div>
+     {!joined&&!closed&&<p className="gn-muted">참여 후 투표할 수 있습니다.</p>}
+     <div className="gn-candidates">{detail.dates.map(d=><div key={d.id} className={`gn-candidate ${d.id===detail.confirmedDateId?'is-confirmed':''}`}><div><strong>{dateLabel(d.date,d.time)}</strong><span>{d.voters.length}표 {maxVotes>0&&d.voters.length===maxVotes&&'· 최다 득표'} {d.id===detail.confirmedDateId&&'· 확정 날짜'}</span>{d.voters.length>0&&<small>{d.voters.map(p=>`${p.name}(${headquartersLabel(p.tenant)})`).join(' · ')}</small>}</div><div className="gn-candidate-actions"><button className={d.voters.some(p=>sameMember(p,me))?'gn-primary':'gn-secondary'} aria-pressed={d.voters.some(p=>sameMember(p,me))} aria-label={`${dateLabel(d.date,d.time)} 투표`} disabled={busy||!joined||!!closed} onClick={()=>void mutate(d.voters.some(p=>sameMember(p,me))?'unvote':'vote',{dateId:d.id})}>{d.voters.some(p=>sameMember(p,me))?'선택됨':'가능해요'}</button>{owner&&!closed&&d.id!==detail.confirmedDateId&&<button className="gn-secondary" disabled={busy||detail.participants.length<detail.minPeople} onClick={()=>{if(window.confirm('이 날짜로 모임을 확정할까요?'))void mutate('confirm',{dateId:d.id});}}>이 날짜로 확정</button>}</div></div>)}</div>
+     {owner&&<div className="gn-owner-actions"><button className="gn-secondary" disabled={busy} onClick={()=>setEditor(true)}>모임 수정</button>{detail.status!=='open'&&<button className="gn-secondary" disabled={busy} onClick={()=>void mutate('reopen')}>모집 다시 열기</button>}{detail.status!=='cancelled'&&<button className="gn-secondary" disabled={busy} onClick={()=>{if(window.confirm('모임을 취소할까요?'))void mutate('cancel');}}>모임 취소</button>}<button className="gn-danger" disabled={busy} onClick={()=>{if(window.confirm('모임과 투표·댓글을 삭제할까요?'))void mutate('delete');}}>모임 삭제</button></div>}
+    </article></div>
+    <section className="gn-panel gn-comments" aria-label="모임 댓글"><h3>댓글</h3><div className="gn-comment-list">{detail.comments.map(c=><article key={c.id}><PersonLabel person={c.member}/><p>{c.body}</p><div><time dateTime={c.createdAt}>{new Date(c.createdAt).toLocaleString('ko-KR',{timeZone:'Asia/Seoul',month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})}</time>{sameMember(c.member,me)&&<button className="gn-danger" disabled={busy} onClick={()=>void mutate('delete_comment',{commentId:c.id})}>내 댓글 삭제</button>}</div></article>)}{!detail.comments.length&&<p className="gn-muted">첫 댓글을 남겨보세요.</p>}</div><form onSubmit={e=>{e.preventDefault();void mutate('comment',{body:comment});}}><label>댓글 입력<textarea value={comment} maxLength={500} required rows={3} onChange={e=>setComment(e.target.value)}/></label><button className="gn-primary" disabled={busy||!comment.trim()}>댓글 등록</button></form></section></div>
+   </>}
+  </>:<>
+   <div className="gn-filters"><label className="gn-search">모임 검색<input type="search" value={query} maxLength={60} onChange={e=>setQuery(e.target.value)} placeholder="모임 이름 검색"/></label><label className="gn-hq-filter"><input type="checkbox" checked={onlyHQ} onChange={e=>{setOnlyHQ(e.target.checked);setPage(0);}}/>우리 본부가 만든 모임만</label></div>
+   <div className="gn-category-tabs" role="group" aria-label="소모임 카테고리">{[['','전체'],...Object.entries(CATEGORIES)].map(([key,label])=><button key={key} aria-pressed={category===key} onClick={()=>{setCategory(key);setPage(0);}}>{label}</button>)}</div>
+   {!list?<p className="gn-empty">{loading?'모임을 불러오는 중…':'표시할 모임이 없습니다.'}</p>:<><div className="gn-list-summary"><span>{list.total}개의 모임</span><span>{loading?'갱신 중…':''}</span></div>{list.meetups.length?<div className="gn-card-grid">{list.meetups.map(m=><button key={m.id} className="gn-meetup-card" onClick={()=>navigate(m.id)}><div className="gn-card-tags"><span>{CATEGORIES[m.category]}</span><Status meetup={m}/></div><h2>{m.title}</h2><p>{m.description||'함께할 동기를 기다리고 있어요.'}</p><div className="gn-card-meta"><span>{m.participants.length}명 참여 · 최소 {m.minPeople}명</span><span>{m.visibility==='all'?'전체 본부':`${headquartersLabel(m.proposer.tenant)} 전용`}</span></div><div className="gn-card-bottom"><PersonLabel person={m.proposer}/><span>{m.dates.length}개 후보 날짜 →</span></div></button>)}</div>:<p className="gn-empty">{view==='mine'?'참여하거나 만든 모임이 없습니다.':view==='past'?'지난 모임이 없습니다.':'아직 모임이 없습니다. 첫 모임을 만들어보세요.'}</p>}{list.total>20&&<div className="gn-pagination"><button className="gn-secondary" disabled={!page||loading} onClick={()=>setPage(p=>p-1)}>이전</button><span>{page+1} / {Math.ceil(list.total/20)}</span><button className="gn-secondary" disabled={(page+1)*20>=list.total||loading} onClick={()=>setPage(p=>p+1)}>다음</button></div>}</>}
+  </>}
+  </>}
+ </section>;
+}

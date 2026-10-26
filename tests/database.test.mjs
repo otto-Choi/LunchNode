@@ -6,7 +6,7 @@ import {createBackend} from '../lib/backend/service.ts';
 import {hashPin,digest} from '../lib/backend/security.ts';
 import {ROSTER} from '../lib/roster.ts';
 const db=databasePools();after(()=>db.close());
-const files=(await fs.readdir('supabase/migrations')).filter(f=>f.endsWith('.sql')&&f!=='20261023090100_global_tables.sql').sort();
+const files=(await fs.readdir('supabase/migrations')).filter(f=>f.endsWith('.sql')&&f!=='20261023090100_global_tables.sql'&&!f.endsWith('_group_node.sql')).sort();
 // Explicit test-only opt-in is checked before any destructive setup.
 await db.admin.query('drop schema public cascade; create schema public;');
 await db.admin.query(`do $$begin if not exists(select 1 from pg_roles where rolname='anon') then create role anon; end if; if not exists(select 1 from pg_roles where rolname='authenticated') then create role authenticated; end if; if not exists(select 1 from pg_roles where rolname='service_role') then create role service_role; end if; end$$;`);
@@ -270,4 +270,46 @@ test('Global correction before first registration retains the participant ID and
   await original.admin.query(correction);assert.equal((await original.admin.query('select version from global_lunch_state')).rows[0].version,1);
   const registered=await original.rpc('global_lunch_register',{p_name:'이은서',p_pin_hash:await hashPin('123456'),p_token_hash:digest('new-name-session')});assert.equal(registered.id,before.id);
  }finally{await original.close();await db.admin.query(`drop database ${databaseName}`);}
+});
+
+test('Group Node shares public meetups across headquarters but isolates private meetings and all ownership writes',async()=>{
+ await db.admin.query(await fs.readFile('supabase/migrations/20261026121503_group_node.sql','utf8'));
+ const axHash=digest('group-ax'),globalHash=digest('group-global'),otherHash=digest('group-other');
+ for(const [prefix,name,hash] of [['ax',ROSTER[0].name,axHash],['ax',ROSTER[1].name,otherHash],['global','류지환',globalHash]]){
+  const c=await db.rpc(prefix+'_lunch_credentials',{p_name:name});assert.ok(c);
+  await db.rpc(prefix+'_lunch_open_session',{p_user_id:c.id,p_expected_hash:c.pin_hash,p_token_hash:hash});
+ }
+ const group=(tenant,hash,action,payload={})=>db.rpc('group_node_api',{p_tenant:tenant,p_token_hash:hash,p_action:action,p_payload:payload});
+ const ax=(a,p)=>group('ax',axHash,a,p),global=(a,p)=>group('global',globalHash,a,p),other=(a,p)=>group('ax',otherHash,a,p);
+ const beforeAX=(await db.admin.query('select data,version from ax_lunch_state')).rows,beforeGlobal=(await db.admin.query('select data,version from global_lunch_state')).rows;
+ const next=new Date(date+'T12:00:00Z');next.setUTCDate(next.getUTCDate()+1);
+ const input={title:'본부 교류',description:'DB 통합 테스트',category:'food',minPeople:2,visibility:'all',dates:[{date,time:'12:00'},{date:next.toISOString().slice(0,10),time:null}]};
+ let m;let privateMeetup;
+ try{
+  await assert.rejects(group('global',axHash,'list',{}),e=>e.status===401);
+  m=await ax('create',input);assert.equal(m.participants.length,1);assert.equal(m.proposer.tenant,'ax');
+  assert.ok((await global('list',{})).meetups.some(x=>x.id===m.id));
+  privateMeetup=await ax('create',{...input,title:'AX 전용',visibility:'headquarters'});
+  assert.ok(!(await global('list',{})).meetups.some(x=>x.id===privateMeetup.id));
+  for(const action of ['detail','join','comment','delete'])await assert.rejects(global(action,{id:privateMeetup.id,body:'no',version:0}),e=>e.status===404);
+  m=await global('join',{id:m.id});assert.equal(m.participants.length,2);
+  for(const d of m.dates)m=await global('vote',{id:m.id,dateId:d.id});
+  await assert.rejects(other('update',{...input,id:m.id,version:m.version}),e=>e.status===403);
+  await assert.rejects(global('confirm',{id:m.id,version:m.version,dateId:m.dates[0].id}),e=>e.status===403);
+  m=await ax('confirm',{id:m.id,version:m.version,dateId:m.dates[0].id});assert.equal(m.status,'confirmed');
+  await assert.rejects(ax('update',{...input,id:m.id,version:0}),e=>e.status===409);
+  await assert.rejects(ax('update',{...input,id:m.id,version:m.version,visibility:'headquarters'}),e=>e.status===409);
+  m=await ax('update',{...input,id:m.id,version:m.version,dates:m.dates.map((d,i)=>({id:d.id,date:d.date,time:i===0?'13:00':d.time}))});
+  assert.equal(m.status,'open');assert.equal(m.dates[0].voters.length,0);assert.equal(m.dates[1].voters.length,1);
+  m=await global('comment',{id:m.id,body:'같이 가요 <script>plain text</script>'});const comment=m.comments[0];assert.equal(comment.member.tenant,'global');
+  await assert.rejects(ax('delete_comment',{id:m.id,commentId:comment.id}),e=>e.status===403);
+  m=await global('delete_comment',{id:m.id,commentId:comment.id});assert.equal(m.comments.length,0);
+  m=await global('leave',{id:m.id});assert.equal(m.participants.length,1);assert.ok(m.dates.every(d=>!d.voters.length));
+  await assert.rejects(global('vote',{id:m.id,dateId:m.dates[0].id}),e=>e.status===409);
+  const grants=(await db.admin.query("select has_function_privilege('anon','group_node_api(text,text,text,jsonb)','execute') as rpc,has_table_privilege('service_role','group_node_meetups','select') as direct,has_table_privilege('anon','group_node_comments','select') as comments")).rows[0];assert.deepEqual(grants,{rpc:false,direct:false,comments:false});
+  assert.deepEqual((await db.admin.query('select data,version from ax_lunch_state')).rows,beforeAX);assert.deepEqual((await db.admin.query('select data,version from global_lunch_state')).rows,beforeGlobal);
+ }finally{
+  if(m)await db.admin.query('delete from group_node_meetups where id=$1',[m.id]);
+  if(privateMeetup)await db.admin.query('delete from group_node_meetups where id=$1',[privateMeetup.id]);
+ }
 });

@@ -1,3 +1,4 @@
+import {groupNodeRequest} from '../group-node/service.ts';
 import {createBackend,type Rpc} from './service.ts';
 import {supabaseRpc} from './supabase.ts';
 import {tenantRpc,type AxNamespace} from './tenant-rpc.ts';
@@ -5,7 +6,7 @@ import {HEADQUARTERS,isHeadquarters,type HeadquartersId} from '../headquarters.t
 import {tenantConfig} from './tenant-config.ts';
 import {ApiError,errorResponse,response,secretEqual} from './security.ts';
 type Env=Record<string,string|undefined>;
-type Endpoint='auth'|'state'|'profile'|'cron'|'health'|'admin'|'tenants';
+type Endpoint='auth'|'state'|'profile'|'cron'|'health'|'admin'|'tenants'|'group-node';
 export function createApplication({env,rpcFactory=supabaseRpc}:{env:Env;rpcFactory?:(url:string,key:string)=>Rpc}){
  const config=(id:HeadquartersId)=>({url:env.SUPABASE_URL||env.AX_SUPABASE_URL,key:env.SUPABASE_SERVICE_ROLE_KEY||env.AX_SUPABASE_SERVICE_ROLE_KEY,...(id==='ax'?{invite:env.AX_INVITE_CODE||env.INVITE_CODE,admin:env.AX_ADMIN_SECRET||env.ADMIN_SECRET}:{invite:env.GLOBAL_INVITE_CODE,admin:env.GLOBAL_ADMIN_SECRET})});
  function validate(id:HeadquartersId){const c=config(id);if(!c.url||!c.key)throw new ApiError(503,'CONFIG','본부 DB 연결 설정이 필요합니다.');
@@ -28,7 +29,7 @@ export function createApplication({env,rpcFactory=supabaseRpc}:{env:Env;rpcFacto
   const t=tenantConfig(id);
   // Keep the old DB spelling usable until the atomic name correction is applied.
   const roster=id==='global'&&info?.globalRosterRevision!==1?t.roster.map(p=>p.name==='이은서'?{...p,name:'이윤서'}:p):t.roster;
-  return {rpc,service:createBackend({rpc,inviteCode:c.invite||'',adminSecret:c.admin||'',cronSecret:env.CRON_SECRET||'',origin:env.APP_ORIGIN||undefined,secureCookies:env.NODE_ENV==='production',tenantId:id,requireRosterGate:true,roster,policy:t.policy,cookieStyle:id==='ax'&&axNamespace==='legacy'?'legacy':'namespaced'})};
+  return {rpc,rawRpc,sessionCookieName:id==='ax'&&axNamespace==='legacy'?'lunch_session':`${id}_lunch_session`,service:createBackend({rpc,inviteCode:c.invite||'',adminSecret:c.admin||'',cronSecret:env.CRON_SECRET||'',origin:env.APP_ORIGIN||undefined,secureCookies:env.NODE_ENV==='production',tenantId:id,requireRosterGate:true,roster,policy:t.policy,cookieStyle:id==='ax'&&axNamespace==='legacy'?'legacy':'namespaced'})};
  }
 
  async function handle(endpoint:Endpoint,request:Request){try{
@@ -51,7 +52,9 @@ export function createApplication({env,rpcFactory=supabaseRpc}:{env:Env;rpcFacto
    }));return response({ok:results.every(r=>r.ok),results},results.every(r=>r.ok)?200:503);
   }
   const raw=request.headers.get('x-lunch-tenant')||'ax';if(!isHeadquarters(raw))throw new ApiError(400,'TENANT','본부를 선택해 주세요.');
-  const b=await backend(raw),result=await b.service.handle(endpoint,request);return result;
+  const b=await backend(raw);
+  if(endpoint==='group-node')return await groupNodeRequest(request,{rpc:b.rawRpc,tenant:raw,cookieName:b.sessionCookieName,origin:env.APP_ORIGIN,limit:b.rpc});
+  return await b.service.handle(endpoint,request);
  }catch(error){return errorResponse(error);}}
  return {handle};
 }

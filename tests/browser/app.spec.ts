@@ -1,4 +1,5 @@
 import {test,expect} from '@playwright/test';
+import {navigateMenu} from './navigation';
 test('register, change attendance and menu, reload, and log out',async({page},info)=>{
  const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
  await page.goto('/');await expect(page).toHaveTitle('런치노드 · 점심 신청 및 조 편성');await expect(page.locator('.brand')).toContainText('런치노드');await expect(page.locator('.brand img')).toHaveAttribute('src','/lunchnode.svg');const icon=await page.request.get('/icon.svg');expect(icon.ok()).toBe(true);expect(await icon.text()).toContain('<circle');await page.getByLabel('초대 코드').fill('ci-invitation');await page.getByRole('button',{name:'초대 코드 확인',exact:true}).click();await page.getByRole('button',{name:'처음이라면 최초 등록'}).click();
@@ -56,7 +57,7 @@ test('register, change attendance and menu, reload, and log out',async({page},in
  for(const d of openDates.slice(0,2))expect(saved.state.choices[d][payload.user.id].status).toBe('absent');
  expect(saved.state.choices[openDates[2]][payload.user.id]).toEqual(untouched);
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
- await page.getByRole('button',{name:'이용 안내',exact:false}).first().click();await expect(page.getByRole('dialog')).toContainText('최근에 만난 사람과 다시 만나는 일을 가장 먼저 피합니다');await expect(page.getByRole('dialog')).toContainText('상관없음은 양쪽 모두 배정');await page.getByRole('button',{name:'닫기',exact:true}).click();
+ await navigateMenu(page,'이용 안내');await expect(page.getByRole('dialog')).toContainText('최근에 만난 사람과 다시 만나는 일을 가장 먼저 피합니다');await expect(page.getByRole('dialog')).toContainText('상관없음은 양쪽 모두 배정');await page.getByRole('button',{name:'닫기',exact:true}).click();
  await page.locator('.profile-button').click();await page.getByRole('button',{name:'운영자 도구',exact:true}).click();
  await page.getByLabel('운영자 키',{exact:true}).fill('ci-operator-secret-at-least-32-chars');const adminCheck=page.waitForResponse(r=>r.url().endsWith('/api/admin'));await page.getByRole('button',{name:'운영자 인증',exact:true}).click();expect((await adminCheck).status()).toBe(200);await expect(page.getByLabel('작업',{exact:true})).toBeVisible();
  await page.getByLabel('작업',{exact:true}).selectOption('recover');await page.getByRole('button',{name:'실행',exact:true}).click();await expect(page.getByRole('dialog').getByRole('status')).toContainText('누락된 편성·마감 처리를 완료했습니다.');
@@ -78,13 +79,13 @@ test('operator rematch requires date and confirmation, submits the selected day 
  await expect(page.getByRole('dialog')).toContainText('기존 조는 만남 횟수에 포함되지 않으며');
  await page.getByRole('checkbox',{name:'기존 조가 바뀌며',exact:false}).check();await submit.click();await expect(page.getByRole('dialog').getByRole('status')).toContainText('전체 조를 재편성했습니다.');expect(requested.action).toBe('rematch');expect(requested.date).toBe(date);
  await expect(submit).toBeDisabled();await page.getByRole('button',{name:'닫기',exact:true}).click();
- await page.getByRole('button',{name:'조 편성 결과',exact:true}).click();await expect(page.locator('.results-note')).toContainText('재편성했습니다');
+ await navigateMenu(page,'조 편성 결과');await expect(page.locator('.results-note')).toContainText('재편성했습니다');
 });
 
 test('group results display everyone outside groups with attendance and menu conditions',async({page})=>{
  const people=[{id:'p1',name:'권도영',className:'4반'},{id:'p2',name:'김서영',className:'4반'},{id:'p3',name:'손규영',className:'4반'},{id:'p4',name:'김민국',className:'4반'},{id:'p5',name:'김상규',className:'4반'}];
  const date='2026-10-22';const payload={demo:false,user:people[0],people,dates:[date],now:`${date}T10:00:00+09:00`,state:{choices:{[date]:{p1:{status:'join',meal:'lunchbox'},p2:{status:'join',meal:'outside'},p3:{status:'absent',meal:'prefer_lunchbox'},p4:{status:'unset',meal:'any'},p5:{status:'join',meal:'prefer_outside'}}},days:{[date]:{phase:'matched',matchedAt:'2026-10-21T22:00:00+09:00',groups:[{id:'a',meal:'lunchbox',members:[people[0]]},{id:'b',meal:'outside',members:[people[1]]}]}},events:[]}};
- await page.route('**/api/state',route=>route.fulfill({json:payload}));await page.goto('/');await page.getByRole('button',{name:'조 편성 결과',exact:true}).click();
+ await page.route('**/api/state',route=>route.fulfill({json:payload}));await page.goto('/');await navigateMenu(page,'조 편성 결과');
  const section=page.getByRole('region',{name:'조 미포함 인원'});await expect(section).toContainText('전체 5명 · 조 배정 2명 · 조 미포함 3명');await expect(section.locator('li')).toHaveCount(3);await expect(page.locator('.group-card').filter({hasText:'권도영'}).locator('.mate-choice')).toHaveText('선택: 도시락만');await expect(page.locator('.group-card').filter({hasText:'김서영'}).locator('.mate-choice')).toHaveText('선택: 외식만');
  const row=(name:string)=>section.getByRole('listitem').filter({hasText:name});await expect(row('손규영')).toContainText('불참');await expect(row('손규영')).toContainText('도시락선호');await expect(row('김민국')).toContainText('미선택');await expect(row('김민국')).toContainText('상관없음');await expect(row('김상규')).toContainText('참석');await expect(row('김상규')).toContainText('외식선호');await expect(row('김상규')).toContainText('미배정');await expect(section.getByRole('alert')).toContainText('참석 신청자 1명');
  await page.getByRole('checkbox',{name:'내가 포함된 조만 보기',exact:true}).check();await expect(page.locator('.group-card')).toHaveCount(1);await expect(section.locator('li')).toHaveCount(3);await expect(section).not.toContainText('김서영');
@@ -94,7 +95,7 @@ test('group results display everyone outside groups with attendance and menu con
 test('nonparticipants distinguish selected absence, default absence and legacy unknown origin',async({page})=>{
  const people=[{id:'a',name:'김범준',className:'12월 입사자',defaultStatus:'absent'},{id:'b',name:'박대원',className:'12월 입사자',defaultStatus:'absent'},{id:'c',name:'박진영',className:'12월 입사자',defaultStatus:'absent'},{id:'d',name:'권도영',className:'4반',defaultStatus:'unset'}];
  const date='2026-10-23';await page.route('**/api/state',route=>route.fulfill({json:{demo:false,user:people[0],people,dates:[date],now:'2026-10-23T10:00:00+09:00',state:{choiceOrigins:{[date]:{a:'selected',b:'default'}},choices:{[date]:{a:{status:'absent',meal:'outside'},b:{status:'absent',meal:'any'},c:{status:'absent',meal:'any'},d:{status:'unset',meal:'any'}}},days:{[date]:{phase:'matched',matchedAt:'2026-10-22T22:00:00+09:00',groups:[]}},events:[]}}}));
- await page.goto('/');await page.getByRole('button',{name:'조 편성 결과',exact:true}).click();const section=page.getByRole('region',{name:'조 미포함 인원'}),row=(name:string)=>section.getByRole('listitem').filter({hasText:name});
+ await page.goto('/');await navigateMenu(page,'조 편성 결과');const section=page.getByRole('region',{name:'조 미포함 인원'}),row=(name:string)=>section.getByRole('listitem').filter({hasText:name});
  await expect(row('김범준').locator('.status-label')).toHaveText('불참 선택');await expect(row('박대원').locator('.status-label')).toHaveText('기본 불참');await expect(row('박진영').locator('.status-label')).toHaveText('불참 · 선택 여부 미확인');await expect(row('권도영').locator('.status-label')).toHaveText('미선택');await expect(section.locator('.attendance-breakdown')).toHaveText('불참 3명 · 미선택 1명 · 참석 미배정 0명');expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
 });
 
@@ -102,11 +103,11 @@ test('result date stays on today at lunchtime and switches at 13:00 while Decemb
  const date='2026-10-22';await page.clock.install({time:new Date(`${date}T12:59:58+09:00`)});await page.clock.pauseAt(new Date(`${date}T12:59:59+09:00`));
  const people=[{id:'h1',name:'김범준',className:'12월 입사자'},{id:'n1',name:'권도영',className:'4반'},{id:'h2',name:'박대원',className:'12월 입사자'},{id:'n2',name:'박서연',className:'5반'}];
  await page.route('**/api/state',route=>route.fulfill({json:{demo:false,user:people[1],people,dates:[date,'2026-10-23','2026-10-26'],now:`${date}T12:59:59+09:00`,state:{choices:{},days:{[date]:{phase:'final',matchedAt:'2026-10-21T22:00:00+09:00',groups:[]}},events:[]}}}));
- await page.goto('/');await page.getByRole('button',{name:'조 편성 결과',exact:true}).click();const select=page.getByLabel('조 편성 날짜');await expect(select).toHaveValue(date);
+ await page.goto('/');await navigateMenu(page,'조 편성 결과');const select=page.getByLabel('조 편성 날짜');await expect(select).toHaveValue(date);
  const names=page.getByRole('region',{name:'조 미포함 인원'}).locator('.ungrouped-person strong');await expect(names).toHaveText(['권도영나','박서연','김범준','박대원']);
  await page.clock.fastForward(1200);await expect(select).toHaveValue('2026-10-23');
  await select.selectOption('2026-10-26');await page.clock.fastForward(31000);await expect(select).toHaveValue('2026-10-26');
- await page.getByRole('button',{name:'내 점심 일정',exact:false}).click();await page.getByRole('button',{name:'조 편성 결과',exact:true}).click();await expect(select).toHaveValue('2026-10-23');
+ await navigateMenu(page,'내 점심 일정');await navigateMenu(page,'조 편성 결과');await expect(select).toHaveValue('2026-10-23');
 });
 
 test('Global invite gate, headquarters headers, contact link and monthly desktop calendar work together',async({page},info)=>{
