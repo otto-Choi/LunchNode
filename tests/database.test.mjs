@@ -287,6 +287,9 @@ test('Group Node shares public meetups across headquarters but isolates private 
  let m;let privateMeetup;
  try{
   await assert.rejects(group('global',axHash,'list',{}),e=>e.status===401);
+  const countBefore=(await db.admin.query('select count(*)::int as n from group_node_meetups')).rows[0].n;
+  await assert.rejects(ax('create',{...input,dates:[{date:'2000-01-01',time:null}]}),e=>e.status===400);
+  assert.equal((await db.admin.query('select count(*)::int as n from group_node_meetups')).rows[0].n,countBefore);
   m=await ax('create',input);assert.equal(m.participants.length,1);assert.equal(m.proposer.tenant,'ax');
   assert.ok((await global('list',{})).meetups.some(x=>x.id===m.id));
   privateMeetup=await ax('create',{...input,title:'AX 전용',visibility:'headquarters'});

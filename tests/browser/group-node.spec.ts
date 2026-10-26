@@ -27,6 +27,7 @@ test('both headquarters share Group Node creation, participation, votes and comm
   await page.evaluate(()=>window.dispatchEvent(new Event('focus')));await expect(page.getByRole('button',{name:'이 날짜로 확정',exact:true}).first()).toBeEnabled();
   page.once('dialog',dialog=>dialog.accept());await page.getByRole('button',{name:'이 날짜로 확정',exact:true}).first().click();await expect(page.locator('.gn-badge.confirmed')).toHaveText('날짜 확정');
   await expect(page.getByRole('region',{name:'모임 댓글'})).toContainText('Global 참여합니다');
+  await page.screenshot({path:info.outputPath('group-node-detail.png'),fullPage:true});
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
   await navigateMenu(page,'내 모임');await expect(page.getByRole('heading',{name:'내 모임',exact:true})).toBeVisible();await page.getByRole('button').filter({has:page.getByRole('heading',{name:title,exact:true})}).click();await expect(page.getByRole('heading',{name:title,exact:true})).toBeVisible();
   await page.getByRole('button',{name:'Lunch Node',exact:true}).click();await expect(page.getByRole('heading',{name:'내 점심 일정',exact:true})).toBeVisible();await page.getByRole('button',{name:'Group Node',exact:true}).click();await expect(page.getByRole('heading',{name:title,exact:true})).toBeVisible();
