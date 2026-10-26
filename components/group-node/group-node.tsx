@@ -20,10 +20,10 @@ export default function GroupNode({user,tenant,active,view,navigation,demo=false
  async function load(){if(!active||demo)return;const seq=++requestSequence.current;setLoading(true);try{
   const params=id?new URLSearchParams({id}):new URLSearchParams({view,category,q:search,onlyHeadquarters:String(onlyHQ),offset:String(page*20)});
   const result=await api('/api/group-node?'+params,undefined,tenant);if(seq!==requestSequence.current)return;
-  if(id)setDetail(result);else setList(result);setError('');
+  if(id)setDetail(result);else{setList(result);if(page>0&&page*20>=result.total)setPage(Math.max(0,Math.ceil(result.total/20)-1));}setError('');
  }catch(e){if(seq!==requestSequence.current)return;setError((e as Error).message);if((e as Error&{status?:number}).status===401)onAuthExpired();}finally{if(seq===requestSequence.current)setLoading(false);}}
  useEffect(()=>{if(!active||editor)return;void load();const timer=setInterval(()=>{if(document.visibilityState==='visible')void load();},15000);const focus=()=>void load();window.addEventListener('focus',focus);return()=>{clearInterval(timer);window.removeEventListener('focus',focus);requestSequence.current++;};},[active,tenant,id,view,category,search,onlyHQ,page,editor]);
- async function mutate(action:string,input:Record<string,unknown>={}){setBusy(true);setError('');requestSequence.current++;try{
+ async function mutate(action:string,input:Record<string,unknown>={}){setBusy(true);setLoading(false);setError('');requestSequence.current++;try{
   const result=await api('/api/group-node',{action,...(detail?{id:detail.id,version:detail.version}:{}),...input},tenant);
   if(action==='delete'){navigate(null);setNotice('모임을 삭제했습니다.');}
   else{if(action==='create'){navigate(result.id);setNotice('모임을 만들었습니다.');}setDetail(result);setId(result.id);setEditor(false);if(action==='comment')setComment('');}
@@ -31,7 +31,7 @@ export default function GroupNode({user,tenant,active,view,navigation,demo=false
  }catch(e){setError((e as Error).message);if((e as Error&{status?:number}).status===401)onAuthExpired();return false;}finally{setBusy(false);}}
  const owner=detail&&sameMember(detail.proposer,me);const joined=detail?.participants.some(p=>sameMember(p,me));
  const today=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Seoul',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
- const closed=detail&&(detail.status==='cancelled'||detail.dates.every(d=>d.date<today));const maxVotes=Math.max(0,...(detail?.dates.map(d=>d.voters.length)||[]));
+ const closed=detail&&(detail.status==='cancelled'||(detail.confirmedDateId?detail.dates.find(d=>d.id===detail.confirmedDateId)!.date<today:detail.dates.every(d=>d.date<today)));const maxVotes=Math.max(0,...(detail?.dates.map(d=>d.voters.length)||[]));
  const save=(input:MeetupInput)=>void mutate(id?'update':'create',input as unknown as Record<string,unknown>);
  return <section className="group-node" aria-label="Group Node 소모임">
   <div className="gn-heading"><div><span className="gn-kicker">GROUP NODE</span><h1>{editor?(id?'모임 수정':'모임 만들기'):id?'모임 상세':view==='mine'?'내 모임':view==='past'?'지난 모임':'모임 둘러보기'}</h1><p>AX Node와 Global, 함께 모이는 곳</p></div>{!id&&!editor&&<button className="gn-primary" onClick={()=>{setEditor(true);setError('');}} disabled={demo}>+ 모임 만들기</button>}</div>

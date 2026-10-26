@@ -98,8 +98,8 @@ begin
    and (coalesce(p_payload->>'category','')='' or item.category=p_payload->>'category')
    and (coalesce(p_payload->>'q','')='' or item.title ilike '%'||(p_payload->>'q')||'%')
    and (not coalesce((p_payload->>'onlyHeadquarters')::boolean,false) or item.created_by_tenant=p_tenant)
-   and (case when p_payload->>'view'='past' then (item.status='cancelled' or (select max(date) from public.group_node_dates where meetup_id=item.id)<today)
-    else item.status<>'cancelled' and (select max(date) from public.group_node_dates where meetup_id=item.id)>=today end)
+   and (case when p_payload->>'view'='past' then (item.status='cancelled' or (select coalesce(max(date) filter(where id=item.confirmed_date_id),max(date)) from public.group_node_dates where meetup_id=item.id)<today)
+    else item.status<>'cancelled' and (select coalesce(max(date) filter(where id=item.confirmed_date_id),max(date)) from public.group_node_dates where meetup_id=item.id)>=today end)
    and (coalesce(p_payload->>'view','browse')<>'mine' or (item.created_by_tenant=p_tenant and item.created_by=actor_id)
     or exists(select 1 from public.group_node_participants p where p.meetup_id=item.id and p.tenant=p_tenant and p.user_id=actor_id))
   ) x;
@@ -123,7 +123,7 @@ begin
   if not owner then raise exception using errcode='LN403',message='모임장만 실행할 수 있습니다.';end if;
   if m.version is distinct from (p_payload->>'version')::int then raise exception using errcode='LN409',message='모임이 변경되었습니다. 다시 불러온 후 시도해 주세요.';end if;
  end if;
- select m.status='cancelled' or max(date)<today into is_past from public.group_node_dates where meetup_id=m.id;
+ select m.status='cancelled' or coalesce(max(date) filter(where id=m.confirmed_date_id),max(date))<today into is_past from public.group_node_dates where meetup_id=m.id;
  if p_action in ('join','leave','vote','unvote') and coalesce(is_past,false) then raise exception using errcode='LN409',message='종료되거나 취소된 모임입니다.';end if;
  if p_action in ('create','update') then
   if p_action='update' then
