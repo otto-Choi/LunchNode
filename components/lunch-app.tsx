@@ -9,7 +9,7 @@ import {CALENDAR_WEEKDAYS,monthCells,shiftMonth,isCalendarWeekend} from '@/lib/c
 
 import ServiceSidebar,{type NodeService} from './service-sidebar';
 import dynamic from 'next/dynamic';
-const GroupNode=dynamic(()=>import('./group-node/group-node'));
+const GroupNode=dynamic(()=>import('./group-node/group-node'),{loading:()=><p role="status">Group Node를 불러오는 중…</p>});
 import type {GroupView} from '@/lib/group-node/types';
 
 type Payload={receivedAt?:number;demo:boolean;user:Person|null;dates:string[];people:Person[];state:State;now:string};

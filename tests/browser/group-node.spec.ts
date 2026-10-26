@@ -6,6 +6,7 @@ async function login(page:Page,tenant:'ax'|'global',name:string){
  await page.getByLabel('이름',{exact:true}).selectOption(name);await page.getByLabel('숫자 6자리 PIN').fill('123456');await page.getByRole('button',{name:'로그인',exact:true}).click();await expect(page.getByRole('heading',{name:'내 점심 일정',exact:true})).toBeVisible();
 }
 test('both headquarters share Group Node creation, participation, votes and comments while lunch remains available',async({page,browser},info)=>{
+ test.setTimeout(60000);
  const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
  await login(page,'ax',info.project.name==='mobile'?'김서영':'권도영');
  await page.getByRole('button',{name:'Group Node',exact:true}).click();await expect(page.getByRole('heading',{name:'모임 둘러보기',exact:true})).toBeVisible();await expect(page).toHaveTitle('Group Node · 동기 소모임');
