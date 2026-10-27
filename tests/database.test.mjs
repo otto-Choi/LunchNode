@@ -6,7 +6,7 @@ import {createBackend} from '../lib/backend/service.ts';
 import {hashPin,digest} from '../lib/backend/security.ts';
 import {ROSTER} from '../lib/roster.ts';
 const db=databasePools();after(()=>db.close());
-const files=(await fs.readdir('supabase/migrations')).filter(f=>f.endsWith('.sql')&&f!=='20261023090100_global_tables.sql'&&!f.endsWith('_group_node.sql')&&!f.endsWith('_tmt_headquarters.sql')&&!f.endsWith('_continuous_operation.sql')).sort();
+const files=(await fs.readdir('supabase/migrations')).filter(f=>f.endsWith('.sql')&&f!=='20261023090100_global_tables.sql'&&!f.endsWith('_group_node.sql')&&!f.endsWith('_tmt_headquarters.sql')&&!f.endsWith('_continuous_operation.sql')&&!f.endsWith('_persistent_clubs.sql')).sort();
 // Explicit test-only opt-in is checked before any destructive setup.
 await db.admin.query('drop schema public cascade; create schema public;');
 await db.admin.query(`do $$begin if not exists(select 1 from pg_roles where rolname='anon') then create role anon; end if; if not exists(select 1 from pg_roles where rolname='authenticated') then create role authenticated; end if; if not exists(select 1 from pg_roles where rolname='service_role') then create role service_role; end if; end$$;`);
@@ -395,4 +395,49 @@ test('Group Node pagination keeps exact totals, stable ordering and private-HQ i
   assert.deepEqual((await group('global',digest('group-global'),0)).meetups.map(m=>m.id),first.meetups.map(m=>m.id));
   assert.equal((await group('tmt',digest('tmt:'+owner),0)).total,30);
  }finally{await db.admin.query('delete from group_node_meetups where id=any($1::uuid[])',[rows.map(r=>r.id)]);}
+});
+
+test('persistent clubs remain active, convert past or future meetups without data loss and protect owner-managed membership',async()=>{
+ const group=(tenant,hash,action,payload={})=>db.rpc('group_node_api',{p_tenant:tenant,p_token_hash:hash,p_action:action,p_payload:payload});
+ const ax=(action,payload)=>group('ax',digest('group-ax'),action,payload),global=(action,payload)=>group('global',digest('group-global'),action,payload);
+ const {TMT_ROSTER}=await import('../lib/backend/tmt-roster.ts');const tmt=(action,payload)=>group('tmt',digest('tmt:'+TMT_ROSTER[0].id),action,payload);
+ const input={title:'club QA future',description:'모집글',category:'sports',minPeople:2,visibility:'all',dates:[{date,time:null}]};
+ const ids=[];
+ try{
+  let future=await ax('create',input);ids.push(future.id);
+  let past=await ax('create',{...input,title:'club QA past'});ids.push(past.id);
+  past=await global('join',{id:past.id});past=await global('vote',{id:past.id,dateId:past.dates[0].id});past=await global('comment',{id:past.id,body:'기존 댓글 보존'});
+  await db.admin.query("update group_node_dates set date='2000-01-01' where meetup_id=$1",[past.id]);
+  await db.admin.query("update group_node_meetups set status='confirmed',confirmed_date_id=$2 where id=$1",[past.id,past.dates[0].id]);
+  const baseline=(await db.admin.query('select jsonb_agg(to_jsonb(m) order by id) as data from group_node_meetups m')).rows[0].data;
+  const lunch=(await db.admin.query("select 'ax' as tenant,version,data from ax_lunch_state union all select 'global',version,data from global_lunch_state union all select 'tmt',version,data from tmt_lunch_state")).rows;
+  const sql=await fs.readFile('supabase/persistent-clubs.sql','utf8');await db.admin.query(sql);
+  assert.deepEqual((await db.admin.query("select jsonb_agg(to_jsonb(m)-'kind' order by id) as data from group_node_meetups m")).rows[0].data,baseline);
+  assert.equal((await ax('detail',{id:past.id})).kind,'one_off');
+  assert.ok((await ax('list',{view:'past'})).meetups.some(m=>m.id===past.id));assert.ok(!(await ax('list',{})).meetups.some(m=>m.id===past.id));
+  assert.ok((await ax('list',{})).meetups.some(m=>m.id===future.id));assert.ok(!(await ax('list',{view:'clubs'})).meetups.some(m=>m.id===future.id));
+  await assert.rejects(global('convert_to_club',{id:past.id,version:past.version}),e=>e.status===403);
+  await assert.rejects(ax('convert_to_club',{id:past.id,version:past.version+1}),e=>e.status===409);
+  past=await ax('convert_to_club',{id:past.id,version:past.version});assert.equal(past.kind,'club');assert.equal(past.status,'confirmed');assert.equal(past.participants.length,2);assert.equal(past.dates[0].date,'2000-01-01');assert.equal(past.dates[0].voters.length,1);assert.equal(past.comments[0].body,'기존 댓글 보존');
+  assert.ok((await ax('list',{})).meetups.some(m=>m.id===past.id));assert.ok((await ax('list',{view:'clubs'})).meetups.some(m=>m.id===past.id));assert.ok(!(await ax('list',{view:'past'})).meetups.some(m=>m.id===past.id));
+  past=await tmt('join',{id:past.id});assert.equal(past.participants.length,3);
+  await assert.rejects(global('participant_roster',{id:past.id}),e=>e.status===403);
+  const people=(await ax('participant_roster',{id:past.id})).people;assert.ok(people.some(p=>p.tenant==='tmt'&&p.id===TMT_ROSTER[1].id));
+  past=await ax('add_participant',{id:past.id,version:past.version,tenant:'tmt',userId:TMT_ROSTER[1].id});assert.equal(past.participants.length,4);
+  const version=past.version;past=await ax('add_participant',{id:past.id,version,tenant:'tmt',userId:TMT_ROSTER[1].id});assert.equal(past.version,version);assert.equal(past.participants.length,4);
+  await assert.rejects(ax('add_participant',{id:past.id,version,tenant:'tmt',userId:'ffffffff-ffff-4fff-8fff-ffffffffffff'}),e=>e.status===400);
+  await assert.rejects(global('add_participant',{id:past.id,version,tenant:'global',userId:people.find(p=>p.tenant==='global').id}),e=>e.status===403);
+  await assert.rejects(tmt('vote',{id:past.id,dateId:past.dates[0].id}),e=>e.status===409);
+  past=await ax('update',{...input,id:past.id,version:past.version,dates:past.dates.map(d=>({id:d.id,date:d.date,time:d.time}))});assert.equal(past.kind,'club');assert.equal(past.dates[0].voters.length,1);
+  future=await ax('update',{...input,id:future.id,version:future.version,kind:'club',dates:future.dates.map(d=>({id:d.id,date:d.date,time:d.time}))});assert.equal(future.kind,'club');
+  let club=await ax('create',{...input,title:'club QA no dates',kind:'club',dates:[]});ids.push(club.id);assert.equal(club.kind,'club');assert.deepEqual(club.dates,[]);
+  club=await global('join',{id:club.id});assert.equal(club.participants.length,2);
+  const privateClub=await ax('create',{...input,title:'club QA private',kind:'club',dates:[],visibility:'headquarters'});ids.push(privateClub.id);
+  assert.ok((await ax('participant_roster',{id:privateClub.id})).people.every(p=>p.tenant==='ax'));
+  await assert.rejects(ax('add_participant',{id:privateClub.id,version:privateClub.version,tenant:'tmt',userId:TMT_ROSTER[1].id}),e=>e.status===403);
+  await assert.rejects(global('participant_roster',{id:privateClub.id}),e=>e.status===404);
+  club=await ax('cancel',{id:club.id,version:club.version});assert.ok(!(await ax('list',{view:'clubs'})).meetups.some(m=>m.id===club.id));assert.ok((await ax('list',{view:'past'})).meetups.some(m=>m.id===club.id));
+  assert.deepEqual((await db.admin.query("select 'ax' as tenant,version,data from ax_lunch_state union all select 'global',version,data from global_lunch_state union all select 'tmt',version,data from tmt_lunch_state")).rows,lunch);
+  const saved=(await db.admin.query('select jsonb_agg(to_jsonb(m) order by id) as data from group_node_meetups m')).rows[0].data;await db.admin.query(sql);assert.deepEqual((await db.admin.query('select jsonb_agg(to_jsonb(m) order by id) as data from group_node_meetups m')).rows[0].data,saved);
+ }finally{await db.admin.query('delete from group_node_meetups where id=any($1::uuid[])',[ids]);}
 });

@@ -138,3 +138,5 @@
  .gn-submit{width:100%}
  .gn-comment-list button{min-height:44px;font-size:13px}
 }
+
+.gn-note{padding:14px 16px;border:1px solid #bae6fd;border-radius:12px;background:#f0f9ff;color:#075985;font-size:16px;line-height:1.6}.gn-member-picker{margin:14px 0}.gn-member-picker form{display:flex;align-items:end;gap:8px;flex-wrap:wrap}.gn-member-picker label{flex:1;min-width:180px}.gn-member-picker select{min-height:44px;width:100%;font:inherit;font-size:16px}
