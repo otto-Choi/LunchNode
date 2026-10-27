@@ -4,6 +4,7 @@ import {databasePools} from './postgres-rpc.mjs';
 const db=databasePools();
 await db.admin.query("truncate ax_lunch_sessions,ax_lunch_users,ax_lunch_auth_buckets;update ax_lunch_state set version=0,data='{\"choices\":{},\"days\":{},\"events\":[]}'::jsonb");
 await db.admin.query("truncate global_lunch_sessions,global_lunch_users,global_lunch_auth_buckets;update global_lunch_state set version=0,data='{\"choices\":{},\"days\":{},\"events\":[]}'::jsonb");
+await db.admin.query("truncate tmt_lunch_sessions,tmt_lunch_users,tmt_lunch_auth_buckets;update tmt_lunch_state set version=0,data='{\"choices\":{},\"days\":{},\"events\":[]}'::jsonb");
 const server=http.createServer(async(req,res)=>{
  try{
   if(req.url==='/health'){res.end('ok');return;}

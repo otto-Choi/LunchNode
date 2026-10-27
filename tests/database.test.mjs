@@ -6,7 +6,7 @@ import {createBackend} from '../lib/backend/service.ts';
 import {hashPin,digest} from '../lib/backend/security.ts';
 import {ROSTER} from '../lib/roster.ts';
 const db=databasePools();after(()=>db.close());
-const files=(await fs.readdir('supabase/migrations')).filter(f=>f.endsWith('.sql')&&f!=='20261023090100_global_tables.sql'&&!f.endsWith('_group_node.sql')).sort();
+const files=(await fs.readdir('supabase/migrations')).filter(f=>f.endsWith('.sql')&&f!=='20261023090100_global_tables.sql'&&!f.endsWith('_group_node.sql')&&!f.endsWith('_tmt_headquarters.sql')).sort();
 // Explicit test-only opt-in is checked before any destructive setup.
 await db.admin.query('drop schema public cascade; create schema public;');
 await db.admin.query(`do $$begin if not exists(select 1 from pg_roles where rolname='anon') then create role anon; end if; if not exists(select 1 from pg_roles where rolname='authenticated') then create role authenticated; end if; if not exists(select 1 from pg_roles where rolname='service_role') then create role service_role; end if; end$$;`);
@@ -315,4 +315,33 @@ test('Group Node shares public meetups across headquarters but isolates private 
   if(m)await db.admin.query('delete from group_node_meetups where id=$1',[m.id]);
   if(privateMeetup)await db.admin.query('delete from group_node_meetups where id=$1',[privateMeetup.id]);
  }
+});
+
+
+test('TMT installer preserves existing HQs, enforces 18-person roster, and extends Group Node securely',async()=>{
+ const before=await db.admin.query("select 'ax' as tenant,version,data from ax_lunch_state union all select 'global',version,data from global_lunch_state");
+ const accounts=await db.admin.query("select 'ax' as tenant,id,pin_hash from ax_lunch_users union all select 'global',id,pin_hash from global_lunch_users");
+ const sql=await fs.readFile('supabase/tmt-schema.sql','utf8');await db.admin.query(sql);
+ await db.admin.query(await fs.readFile('supabase/tmt-group-node.sql','utf8'));
+ const {TMT_ROSTER}=await import('../lib/backend/tmt-roster.ts');
+ assert.deepEqual((await db.admin.query('select id,name,class_name as "className",default_status as "defaultStatus" from tmt_lunch_roster order by id')).rows,TMT_ROSTER);
+ assert.equal((await db.rpc('tmt_lunch_tenant_info',{})).tenant,'tmt');assert.equal(await db.rpc('tmt_lunch_health',{}),true);
+ const tokens=[];
+ for(const p of TMT_ROSTER){const hash=digest('tmt:'+p.id);await db.rpc('tmt_lunch_register',{p_name:p.name,p_pin_hash:await hashPin('123456'),p_token_hash:hash});tokens.push(hash);}
+ await assert.rejects(db.rpc('tmt_lunch_register',{p_name:'류지환',p_pin_hash:'x',p_token_hash:'x'}));
+ assert.equal(await db.rpc('global_lunch_identity',{p_token_hash:tokens[0]}),null);
+ const group=(tenant,hash,action,payload={})=>db.rpc('group_node_api',{p_tenant:tenant,p_token_hash:hash,p_action:action,p_payload:payload});
+ let m=await group('tmt',tokens[0],'create',{title:'TMT 교류',description:'',category:'food',visibility:'all',minPeople:2,dates:[{date,time:null}]});
+ assert.equal(m.proposer.name,'김수연');assert.equal(m.proposer.className,'TMT Tech');
+ assert.ok((await group('global',digest('group-global'),'list')).meetups.some(x=>x.id===m.id));
+ m=await group('global',digest('group-global'),'join',{id:m.id});assert.equal(m.participants.length,2);
+ await group('tmt',tokens[0],'delete',{id:m.id,version:m.version});
+ m=await group('tmt',tokens[0],'create',{title:'TMT 전용',description:'',category:'food',visibility:'headquarters',minPeople:2,dates:[{date,time:null}]});
+ await assert.rejects(group('global',digest('group-global'),'detail',{id:m.id}),e=>e.status===404);
+ await assert.rejects(group('tmt',digest('group-global'),'detail',{id:m.id}),e=>e.status===401);
+ await group('tmt',tokens[0],'delete',{id:m.id,version:m.version});
+ const tmtBefore=await db.admin.query('select id,pin_hash from tmt_lunch_users order by id');await db.admin.query(sql);assert.deepEqual((await db.admin.query('select id,pin_hash from tmt_lunch_users order by id')).rows,tmtBefore.rows);
+ assert.deepEqual((await db.admin.query("select 'ax' as tenant,version,data from ax_lunch_state union all select 'global',version,data from global_lunch_state")).rows,before.rows);
+ assert.deepEqual((await db.admin.query("select 'ax' as tenant,id,pin_hash from ax_lunch_users union all select 'global',id,pin_hash from global_lunch_users")).rows,accounts.rows);
+ assert.equal((await db.admin.query("select has_function_privilege('anon','tmt_lunch_snapshot(text,boolean)','execute') as allowed")).rows[0].allowed,false);
 });
