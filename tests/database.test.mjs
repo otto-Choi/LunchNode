@@ -6,7 +6,7 @@ import {createBackend} from '../lib/backend/service.ts';
 import {hashPin,digest} from '../lib/backend/security.ts';
 import {ROSTER} from '../lib/roster.ts';
 const db=databasePools();after(()=>db.close());
-const files=(await fs.readdir('supabase/migrations')).filter(f=>f.endsWith('.sql')&&f!=='20261023090100_global_tables.sql'&&!f.endsWith('_group_node.sql')&&!f.endsWith('_tmt_headquarters.sql')&&!f.endsWith('_continuous_operation.sql')&&!f.endsWith('_persistent_clubs.sql')).sort();
+const files=(await fs.readdir('supabase/migrations')).filter(f=>f.endsWith('.sql')&&f!=='20261023090100_global_tables.sql'&&!f.endsWith('_group_node.sql')&&!f.endsWith('_tmt_headquarters.sql')&&!f.endsWith('_continuous_operation.sql')&&!f.endsWith('_persistent_clubs.sql')&&!f.endsWith('_headquarters_administrators.sql')).sort();
 // Explicit test-only opt-in is checked before any destructive setup.
 await db.admin.query('drop schema public cascade; create schema public;');
 await db.admin.query(`do $$begin if not exists(select 1 from pg_roles where rolname='anon') then create role anon; end if; if not exists(select 1 from pg_roles where rolname='authenticated') then create role authenticated; end if; if not exists(select 1 from pg_roles where rolname='service_role') then create role service_role; end if; end$$;`);
@@ -439,5 +439,56 @@ test('persistent clubs remain active, convert past or future meetups without dat
   club=await ax('cancel',{id:club.id,version:club.version});assert.ok(!(await ax('list',{view:'clubs'})).meetups.some(m=>m.id===club.id));assert.ok((await ax('list',{view:'past'})).meetups.some(m=>m.id===club.id));
   assert.deepEqual((await db.admin.query("select 'ax' as tenant,version,data from ax_lunch_state union all select 'global',version,data from global_lunch_state union all select 'tmt',version,data from tmt_lunch_state")).rows,lunch);
   const saved=(await db.admin.query('select jsonb_agg(to_jsonb(m) order by id) as data from group_node_meetups m')).rows[0].data;await db.admin.query(sql);assert.deepEqual((await db.admin.query('select jsonb_agg(to_jsonb(m) order by id) as data from group_node_meetups m')).rows[0].data,saved);
+ }finally{await db.admin.query('delete from group_node_meetups where id=any($1::uuid[])',[ids]);}
+});
+
+test('headquarters administrator accounts preserve participants, enforce DB roles and moderate all Group Node headquarters',async()=>{
+ const {createApplication}=await import('../lib/backend/application.ts');
+ const before=(await db.admin.query("select 'ax' as tenant,id,pin_hash from ax_lunch_users union all select 'global',id,pin_hash from global_lunch_users union all select 'tmt',id,pin_hash from tmt_lunch_users")).rows;
+ const stateBefore=(await db.admin.query("select 'ax' as tenant,version,data from ax_lunch_state union all select 'global',version,data from global_lunch_state union all select 'tmt',version,data from tmt_lunch_state")).rows;
+ const sql=await fs.readFile('supabase/headquarters-administrators.sql','utf8');await db.admin.query(sql);
+ assert.deepEqual((await db.admin.query("select 'ax' as tenant,version,data from ax_lunch_state union all select 'global',version,data from global_lunch_state union all select 'tmt',version,data from tmt_lunch_state")).rows,stateBefore);
+ assert.deepEqual((await db.admin.query("select 'ax' as tenant,u.id,u.pin_hash from ax_lunch_users u join ax_lunch_roster r on r.id=u.id where not r.is_admin union all select 'global',u.id,u.pin_hash from global_lunch_users u join global_lunch_roster r on r.id=u.id where not r.is_admin union all select 'tmt',u.id,u.pin_hash from tmt_lunch_users u join tmt_lunch_roster r on r.id=u.id where not r.is_admin")).rows,before);
+ const env={SUPABASE_URL:'https://db.test',SUPABASE_SERVICE_ROLE_KEY:'test',AX_INVITE_CODE:'ax-admin-ci',GLOBAL_INVITE_CODE:'global-admin-ci',TMT_INVITE_CODE:'tmt-admin-ci',AX_ADMIN_SECRET:'ax-old-secret-at-least-32-characters',GLOBAL_ADMIN_SECRET:'global-old-secret-at-least-32-characters',TMT_ADMIN_SECRET:'tmt-old-secret-at-least-32-characters',CRON_SECRET:'ci',APP_ORIGIN:'https://lunch.test'};
+ const app=createApplication({env,rpcFactory:()=>db.rpc});const cookies={};const hashes={};
+ const call=(endpoint,tenant,body,cookie='')=>app.handle(endpoint,new Request('https://lunch.test/api/'+endpoint,{method:body?'POST':'GET',headers:{origin:'https://lunch.test','content-type':'application/json','x-lunch-tenant':tenant,cookie},...(body?{body:JSON.stringify(body)}:{})}));
+ const testHash=await hashPin('246810');
+ for(const [tenant,count] of [['ax',20],['global',20],['tmt',18]]){
+  const r=await db.admin.query(`update ${tenant}_lunch_users set pin_hash=$1 where name='관리자' and pin_hash='!uninitialized!'`,[testHash]);assert.equal(r.rowCount,1);
+  const unlock=await call('auth',tenant,{action:'unlock',invite:env[tenant.toUpperCase()+'_INVITE_CODE']});assert.equal(unlock.status,200);
+  const roster=(await unlock.json()).people;assert.equal(roster.length,count+1);assert.equal(roster.at(-1).name,'관리자');assert.equal(roster.at(-1).isAdmin,true);
+  const gate=unlock.headers.get('set-cookie').split(';')[0];assert.equal((await call('auth',tenant,{action:'register',name:'관리자',pin:'246810'},gate)).status,403);
+  await assert.rejects(db.rpc(tenant+'_lunch_register',{p_name:'관리자',p_pin_hash:testHash,p_token_hash:digest('forged')}),e=>e.status===403);
+  const login=await call('auth',tenant,{action:'login',name:'관리자',pin:'246810'},gate);assert.equal(login.status,200);assert.equal((await login.json()).user.isAdmin,true);
+  cookies[tenant]=login.headers.get('set-cookie').split(';')[0];hashes[tenant]=digest(tenant==='ax'?cookies[tenant].split('=')[1]:tenant+':'+cookies[tenant].split('=')[1]);
+  const snap=await call('state',tenant,undefined,cookies[tenant]);assert.equal(snap.status,200);const data=await snap.json();assert.equal(data.people.length,count);assert.ok(data.people.every(p=>!p.isAdmin));assert.ok(!Object.values(data.state.days).some(d=>d.groups.some(g=>g.members.some(p=>p.isAdmin))));
+  assert.equal((await call('state',tenant,{dates:[date],choice:{status:'join',meal:'any'}},cookies[tenant])).status,403);
+  assert.equal((await call('admin',tenant,{action:'check'},cookies[tenant])).status,200);assert.equal((await call('admin',tenant,{action:'status'},cookies[tenant])).status,200);
+  assert.equal(await db.rpc(tenant+'_lunch_health',{}),true);
+ }
+ assert.equal((await call('state','global',undefined,cookies.ax.replace('ax_lunch_session','global_lunch_session'))).status,401);
+ const c=await db.rpc('ax_lunch_credentials',{p_name:ROSTER[0].name});const raw='f'.repeat(64);await db.rpc('ax_lunch_open_session',{p_user_id:c.id,p_expected_hash:c.pin_hash,p_token_hash:digest(raw)});
+ const normal='ax_lunch_session='+raw;assert.equal((await call('admin','ax',{action:'check',isAdmin:true},normal)).status,403);assert.equal((await call('admin','ax',{action:'check',key:env.AX_ADMIN_SECRET},normal)).status,200);
+ await assert.rejects(db.admin.query('update ax_lunch_roster set is_admin=true where id=$1',[ROSTER[0].id]),e=>e.code==='23514');
+ assert.equal((await call('admin','ax',{action:'reset_pin',name:ROSTER[1].name,newPin:'135790'},cookies.ax)).status,200);
+ const group=(tenant,hash,action,payload={})=>db.rpc('group_node_api',{p_tenant:tenant,p_token_hash:hash,p_action:action,p_payload:payload});
+ const global=(a,p)=>group('global',digest('group-global'),a,p),admin=(a,p)=>group('ax',hashes.ax,a,p),normalGroup=(a,p)=>group('ax',digest(raw),a,p);const ids=[];
+ try{
+  let m=await global('create',{kind:'club',title:'admin QA private',description:'original',category:'etc',minPeople:2,visibility:'headquarters',dates:[]});ids.push(m.id);
+  m=await global('comment',{id:m.id,body:'original comment'});const comment=m.comments[0];
+  assert.ok((await admin('list',{})).meetups.some(x=>x.id===m.id));await assert.rejects(normalGroup('detail',{id:m.id}),e=>e.status===404);
+  m=await admin('detail',{id:m.id});const originalProposer=m.proposer;
+  m=await admin('update',{id:m.id,version:m.version,kind:'club',title:m.title,description:'moderated',category:'etc',minPeople:2,visibility:'headquarters',dates:[]});assert.equal(m.description,'moderated');assert.deepEqual(m.proposer,originalProposer);
+  m=await admin('edit_comment',{id:m.id,commentId:comment.id,body:'moderated comment',expectedBody:comment.body});assert.equal(m.comments[0].body,'moderated comment');
+  await assert.rejects(admin('edit_comment',{id:m.id,commentId:comment.id,body:'stale',expectedBody:comment.body}),e=>e.status===409);
+  m=await admin('delete_comment',{id:m.id,commentId:comment.id});assert.equal(m.comments.length,0);
+  const candidates=(await admin('participant_roster',{id:m.id})).people;assert.ok(candidates.every(p=>p.tenant==='global'&&p.name!=='관리자'));
+  m=await admin('add_participant',{id:m.id,version:m.version,tenant:'global',userId:candidates[0].id});assert.equal(m.participants.length,2);
+  await assert.rejects(admin('join',{id:m.id}),e=>e.status===403);
+  const adminID=(await db.rpc('global_lunch_credentials',{p_name:'관리자'})).id;await assert.rejects(admin('add_participant',{id:m.id,version:m.version,tenant:'global',userId:adminID}),e=>e.status===400);
+  const made=await admin('create',{kind:'club',title:'admin QA created',description:'',category:'etc',minPeople:2,visibility:'all',dates:[]});ids.push(made.id);assert.equal(made.participants.length,0);assert.equal(made.proposer.name,'관리자');
+  assert.ok((await db.admin.query('select count(*)::int as n from lunch_admin_private.events')).rows[0].n>=4);
+  const pins=(await db.admin.query("select id,pin_hash from ax_lunch_users where name='관리자' union all select id,pin_hash from global_lunch_users where name='관리자' union all select id,pin_hash from tmt_lunch_users where name='관리자'")).rows;await db.admin.query(sql);assert.deepEqual((await db.admin.query("select id,pin_hash from ax_lunch_users where name='관리자' union all select id,pin_hash from global_lunch_users where name='관리자' union all select id,pin_hash from tmt_lunch_users where name='관리자'")).rows,pins);
+  assert.equal((await db.admin.query("select has_schema_privilege('anon','lunch_admin_private','usage') as allowed")).rows[0].allowed,false);
  }finally{await db.admin.query('delete from group_node_meetups where id=any($1::uuid[])',[ids]);}
 });

@@ -6,7 +6,7 @@ test('TMT invitation opens only its canonical 18-person roster and registers a t
  await page.getByRole('button',{name:'초대 코드 확인',exact:true}).click();
  await page.getByRole('button',{name:'처음이라면 최초 등록'}).click();
  const select=page.getByLabel('이름',{exact:true});await expect(select).toBeVisible();
- await expect(select.locator('option')).toHaveCount(19);
+ await expect(select.locator('option')).toHaveCount(20);
  await select.selectOption(name);
  await page.getByLabel('숫자 6자리 PIN').fill('123456');
  const loaded=page.waitForResponse(r=>r.url().endsWith('/api/state')&&r.status()===200);

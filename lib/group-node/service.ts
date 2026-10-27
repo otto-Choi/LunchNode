@@ -33,18 +33,18 @@ export async function groupNodeRequest(request:Request,options:{rpc:Rpc;tenant:H
   else{const offset=Number(q.get('offset')||0);if(!Number.isSafeInteger(offset)||offset<0||offset>100000)throw new ApiError(400,'INPUT','페이지를 확인해 주세요.');payload={view:['mine','clubs','past'].includes(q.get('view')||'')?q.get('view'):'browse',category:q.get('category')||'',q:(q.get('q')||'').slice(0,60),onlyHeadquarters:q.get('onlyHeadquarters')==='true',offset};}
  }else{
   checkOrigin(request,options.origin);const body=await readJson(request);action=String(body.action);
-  if(!['create','update','delete','join','leave','vote','unvote','comment','delete_comment','confirm','reopen','cancel','convert_to_club','add_participant'].includes(action))throw new ApiError(400,'ACTION','잘못된 작업입니다.');
+  if(!['create','update','delete','join','leave','vote','unvote','comment','delete_comment','confirm','reopen','cancel','convert_to_club','add_participant','edit_comment'].includes(action))throw new ApiError(400,'ACTION','잘못된 작업입니다.');
   if(action!=='create'&&!uuid(body.id))throw new ApiError(400,'INPUT','모임을 확인해 주세요.');
   payload=action==='create'||action==='update'?{...meetupInput(body),...(action==='update'?{id:body.id,version:body.version}:{})}:{id:body.id};
   if(['update','delete','confirm','reopen','cancel','convert_to_club','add_participant'].includes(action)){
    if(!Number.isInteger(body.version)||Number(body.version)<0)throw new ApiError(400,'INPUT','최신 모임 정보를 다시 불러와 주세요.');payload.version=body.version;
   }
   if(action==='add_participant'){if(!isHeadquarters(body.tenant)||!uuid(body.userId))throw new ApiError(400,'INPUT','참여자를 선택해 주세요.');payload.tenant=body.tenant;payload.userId=body.userId;}
-  if(['vote','unvote','confirm','delete_comment'].includes(action)){
-   const key=action==='delete_comment'?'commentId':'dateId';if(!uuid(body[key]))throw new ApiError(400,'INPUT','선택 항목을 확인해 주세요.');payload[key]=body[key];
+  if(['vote','unvote','confirm','delete_comment','edit_comment'].includes(action)){
+   const key=['delete_comment','edit_comment'].includes(action)?'commentId':'dateId';if(!uuid(body[key]))throw new ApiError(400,'INPUT','선택 항목을 확인해 주세요.');payload[key]=body[key];
   }
-  if(action==='comment'){
-   const text=typeof body.body==='string'?body.body.trim():'';if(!text||text.length>500)throw new ApiError(400,'INPUT','댓글은 1~500자로 입력해 주세요.');payload.body=text;
+  if(action==='comment'||action==='edit_comment'){
+   const text=typeof body.body==='string'?body.body.trim():'';if(!text||text.length>500)throw new ApiError(400,'INPUT','댓글은 1~500자로 입력해 주세요.');payload.body=text;if(action==='edit_comment'){if(typeof body.expectedBody!=='string'||body.expectedBody.length>500)throw new ApiError(400,'INPUT','최신 댓글을 다시 불러와 주세요.');payload.expectedBody=body.expectedBody;}
   }
   if(!await options.limit<boolean>('lunch_rate_limit',{p_key:digest('group-node:'+hash),p_limit:120}))throw new ApiError(429,'RATE_LIMIT','요청이 많습니다. 잠시 후 다시 시도해 주세요.');
  }
