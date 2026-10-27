@@ -10,12 +10,10 @@ type Endpoint='auth'|'state'|'profile'|'cron'|'health'|'admin'|'tenants'|'group-
 export function createApplication({env,rpcFactory=supabaseRpc}:{env:Env;rpcFactory?:(url:string,key:string)=>Rpc}){
  const config=(id:HeadquartersId)=>({url:env.SUPABASE_URL||env.AX_SUPABASE_URL,key:env.SUPABASE_SERVICE_ROLE_KEY||env.AX_SUPABASE_SERVICE_ROLE_KEY,...(id==='ax'?{invite:env.AX_INVITE_CODE||env.INVITE_CODE,admin:env.AX_ADMIN_SECRET||env.ADMIN_SECRET}:id==='global'?{invite:env.GLOBAL_INVITE_CODE,admin:env.GLOBAL_ADMIN_SECRET}:{invite:env.TMT_INVITE_CODE,admin:env.TMT_ADMIN_SECRET})});
  function validate(id:HeadquartersId){
-  // Provision the verified roster, isolated SQL and Group Node support before opening TMT.
-  if(id==='tmt')throw new ApiError(503,'PREPARING','TMT는 명단 등록을 준비 중입니다.');
   const c=config(id);if(!c.url||!c.key)throw new ApiError(503,'CONFIG','본부 DB 연결 설정이 필요합니다.');
-  if(id==='global'){
-   const ax=config('ax');
-   if(!c.invite||c.invite===ax.invite||!c.admin||c.admin.length<32||c.admin===ax.admin)throw new ApiError(503,'CONFIG','Global 전용 초대 코드와 별도의 32자 이상 운영자 키가 필요합니다.');
+  if(id!=='ax'){
+   const others=HEADQUARTERS.filter(h=>h.id!==id).map(h=>config(h.id));
+   if(!c.invite||!c.admin||c.admin.length<32||others.some(o=>o.invite===c.invite||o.admin===c.admin))throw new ApiError(503,'CONFIG','본부 전용 초대 코드와 별도의 32자 이상 운영자 키가 필요합니다.');
   }return c;
  }
  const available=(id:HeadquartersId)=>{try{validate(id);return true;}catch{return false;}};
@@ -28,7 +26,7 @@ export function createApplication({env,rpcFactory=supabaseRpc}:{env:Env;rpcFacto
    try{info=await rpc('lunch_tenant_info',{});}catch(legacyError){if(!(legacyError instanceof ApiError)||legacyError.code!=='RPC_MISSING')throw legacyError;}
   }
   if(info&&info.tenant!==id)throw new ApiError(503,'TENANT','연결된 DB의 본부 설정이 일치하지 않습니다.');
-  if(id==='global'&&!info)throw new ApiError(503,'TENANT','Global DB 초기화가 필요합니다.');
+  if(id!=='ax'&&!info)throw new ApiError(503,'TENANT','본부 DB 초기화가 필요합니다.');
   const t=tenantConfig(id);
   // Keep the old DB spelling usable until the atomic name correction is applied.
   const roster=id==='global'&&info?.globalRosterRevision!==1?t.roster.map(p=>p.name==='이은서'?{...p,name:'이윤서'}:p):t.roster;
@@ -44,7 +42,7 @@ export function createApplication({env,rpcFactory=supabaseRpc}:{env:Env;rpcFacto
   if(endpoint==='cron'){
    if(request.method!=='GET')return response({error:'허용되지 않은 메서드입니다.'},405);
    if(!env.CRON_SECRET||!secretEqual(request.headers.get('authorization')||'',`Bearer ${env.CRON_SECRET}`))throw new ApiError(401,'AUTH','인증이 필요합니다.');
-   const ids:HeadquartersId[]=['ax'];if(env.GLOBAL_INVITE_CODE||env.GLOBAL_ADMIN_SECRET)ids.push('global');
+   const ids:HeadquartersId[]=['ax'];if(env.GLOBAL_INVITE_CODE||env.GLOBAL_ADMIN_SECRET)ids.push('global');if(env.TMT_INVITE_CODE||env.TMT_ADMIN_SECRET)ids.push('tmt');
    const results=await Promise.all(ids.map(async id=>{
     let rpc:Rpc|undefined;
     try{const b=await backend(id);rpc=b.rpc;const result=await b.service.handle('cron',request);if(!result.ok)throw new ApiError(result.status,'JOB','자동 작업에 실패했습니다.');

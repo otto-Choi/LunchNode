@@ -5,9 +5,10 @@ async function fixture(){
  const {createApplication}=await import('../lib/backend/application.ts');
  const {ROSTER}=await import('../lib/roster.ts');const {GLOBAL_ROSTER}=await import('../lib/backend/global-roster.ts');
  const env={SUPABASE_URL:'https://ax.test',SUPABASE_SERVICE_ROLE_KEY:'ax-service',INVITE_CODE:'ax-code',ADMIN_SECRET:'ax-operator-key-longer-than-32-characters',GLOBAL_INVITE_CODE:'global-code',GLOBAL_ADMIN_SECRET:'global-operator-key-longer-than-32-characters',CRON_SECRET:'cron',APP_ORIGIN:'https://lunch.test'};
- const stores={ax:{people:ROSTER,tenant:'ax'},global:{people:GLOBAL_ROSTER,tenant:'global'}};
+ const {TMT_ROSTER}=await import('../lib/backend/tmt-roster.ts');
+ const stores={tmt:{people:TMT_ROSTER,tenant:'tmt'},ax:{people:ROSTER,tenant:'ax'},global:{people:GLOBAL_ROSTER,tenant:'global'}};
  for(const st of Object.values(stores))Object.assign(st,{users:new Map(),sessions:new Map(),state:{choices:{},days:{},events:[]},version:0,jobs:[]});
- const rpcFactory=(url,key)=>{assert.equal(url,'https://ax.test');assert.equal(key,'ax-service');return async(name,a)=>{calls.push(name);const isGlobal=name.startsWith('global_lunch_');if(!isGlobal&&name.startsWith('ax_')){if(stores.ax.legacy)throw new ApiError(503,'RPC_MISSING','Missing');name=name.slice(3);}const st=stores[isGlobal?'global':'ax'];if(isGlobal)name=name.slice(7);if(st.fail)throw Error('unavailable');switch(name){
+ const rpcFactory=(url,key)=>{assert.equal(url,'https://ax.test');assert.equal(key,'ax-service');return async(name,a)=>{calls.push(name);const isTmt=name.startsWith('tmt_lunch_');if(isTmt)name=name.slice(4);const isGlobal=name.startsWith('global_lunch_');if(!isGlobal&&name.startsWith('ax_')){if(stores.ax.legacy)throw new ApiError(503,'RPC_MISSING','Missing');name=name.slice(3);}const st=stores[isTmt?'tmt':isGlobal?'global':'ax'];if(isGlobal)name=name.slice(7);if(st.fail)throw Error('unavailable');switch(name){
  case 'lunch_tenant_info':return {tenant:st.tenant,...(isGlobal?{globalRosterRevision:st.rosterRevision??1}:{})};case 'lunch_rate_limit':return true;
  case 'lunch_identity':return st.sessions.get(a.p_token_hash)||null;
  case 'lunch_register':{const p=st.people.find(p=>p.name===a.p_name);st.users.set(p.id,p);st.sessions.set(a.p_token_hash,p);return p;}
@@ -77,20 +78,21 @@ test('Global roster correction supports both the pre-SQL and corrected DB withou
 });
 
 
-test('TMT is listed as preparing and cannot touch any DB even with prefilled credentials',async()=>{
- const f=await fixture();f.env.TMT_INVITE_CODE='TMT36';f.env.TMT_ADMIN_SECRET='tmt-operator-key-longer-than-32-characters';
- const listing=await (await f.call('tenants','ax')).json();
- assert.deepEqual(listing.headquarters.find(h=>h.id==='tmt'),{id:'tmt',label:'TMT',available:false});
- for(const endpoint of ['auth','state','profile','admin','group-node']){
-  const response=await f.call(endpoint,'tmt',endpoint==='auth'?{action:'unlock',invite:'TMT36'}:undefined);
-  assert.equal(response.status,503);assert.equal((await response.json()).code,'PREPARING');
- }
- assert.equal(f.calls.length,0);
- const {tenantConfig}=await import('../lib/backend/tenant-config.ts');
- assert.deepEqual(tenantConfig('tmt').roster,[]);
- assert.deepEqual(tenantConfig('tmt').policy.genderByName,{});
- assert.equal(tenantConfig('tmt').policy.balanceClasses,true);
- const {tenantRpc}=await import('../lib/backend/tenant-rpc.ts');let routed;
- await tenantRpc(async name=>{routed=name;return null;},'tmt')('lunch_tenant_info',{});
- assert.equal(routed,'tmt_lunch_tenant_info');
+test('TMT isolated registration, cookies, choices, secrets and scheduled jobs',async()=>{
+ const f=await fixture();assert.equal((await f.call('state','tmt')).status,503);
+ f.env.TMT_INVITE_CODE='TMT36';f.env.TMT_ADMIN_SECRET='tmt-operator-key-longer-than-32-characters';
+ const gateResponse=await f.call('auth','tmt',{action:'unlock',invite:'TMT36'});assert.equal(gateResponse.status,200);
+ const gate=gateResponse.headers.get('set-cookie').split(';')[0];assert.match(gate,/^tmt_lunch_roster=/);
+ const roster=(await gateResponse.json()).people;assert.equal(roster.length,18);assert.equal(roster.filter(p=>p.className==='TMT Tech').length,8);assert.equal(roster.filter(p=>p.className==='TMT ICT').length,10);
+ const denied=await f.call('auth','tmt',{action:'unlock',invite:'global-code'});assert.equal(denied.status,403);
+ const registered=await f.call('auth','tmt',{action:'register',name:'김수연',pin:'123456'},gate);assert.equal(registered.status,200);
+ const cookie=registered.headers.get('set-cookie').split(';')[0];assert.match(cookie,/^tmt_lunch_session=/);
+ assert.equal((await f.call('state','global',undefined,cookie.replace('tmt_lunch_session','global_lunch_session'))).status,401);
+ assert.equal((await f.call('auth','tmt',{action:'register',name:'류지환',pin:'123456'},gate)).status,400);
+ assert.equal((await f.call('state','tmt',{dates:['2026-10-26'],choice:{status:'join',meal:'any'}},cookie)).status,200);
+ assert.deepEqual(f.stores.ax.state.choices,{});assert.deepEqual(f.stores.global.state.choices,{});
+ assert.equal((await f.call('admin','tmt',{action:'status',key:f.env.ADMIN_SECRET},cookie)).status,403);
+ const jobs=await (await f.call('cron','ax',undefined,'',{authorization:'Bearer cron'})).json();assert.deepEqual(jobs.results.map(r=>r.id),['ax','global','tmt']);assert.ok(jobs.results.every(r=>r.ok));
+ const {tenantConfig}=await import('../lib/backend/tenant-config.ts');assert.deepEqual(tenantConfig('tmt').policy.genderByName,{});assert.equal(tenantConfig('tmt').policy.balanceClasses,true);
+ f.env.TMT_ADMIN_SECRET=f.env.GLOBAL_ADMIN_SECRET;assert.equal((await f.call('state','tmt',undefined,cookie)).status,503);
 });

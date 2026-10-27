@@ -37,6 +37,7 @@ jobs:
       - name: Check generated SQL and cutover guide
         run: |
           python scripts/build-global-schema.py
+          python scripts/build-tmt-schema.py
           python scripts/build-before-cutover.py
           git diff --exit-code -- supabase/ CUTOVER_GUIDE.md
       - run: npm run typecheck

@@ -1,0 +1,20 @@
+import {test,expect} from '@playwright/test';
+test('TMT invitation opens only its canonical 18-person roster and registers a team member',async({page},info)=>{
+ const name=info.project.name==='mobile'?'김현준':'김수연';
+ await page.goto('/');await page.getByLabel('본부',{exact:true}).selectOption('tmt');
+ await page.getByLabel('초대 코드',{exact:true}).fill('TMT36');
+ await page.getByRole('button',{name:'초대 코드 확인',exact:true}).click();
+ await page.getByRole('button',{name:'처음이라면 최초 등록'}).click();
+ const select=page.getByLabel('이름',{exact:true});await expect(select).toBeVisible();
+ await expect(select.locator('option')).toHaveCount(19);
+ await select.selectOption(name);
+ await page.getByLabel('숫자 6자리 PIN').fill('123456');
+ const loaded=page.waitForResponse(r=>r.url().endsWith('/api/state')&&r.status()===200);
+ await page.getByRole('button',{name:'등록',exact:true}).click();const data=await (await loaded).json();
+ expect(data.user.name).toBe(name);await expect(page.getByRole('heading',{name:'내 점심 일정',exact:true})).toBeVisible();await expect(page.locator('header')).toContainText(name);
+ const future=data.dates.find((d:string)=>new Date(data.now)<new Date(`${d}T11:00:00+09:00`));
+ const short=`${Number(future.slice(5,7))}월 ${Number(future.slice(8))}일`;
+ const write=page.waitForResponse(r=>r.url().endsWith('/api/state')&&r.request().method()==='POST');
+ await page.getByRole('button',{name:`${short} 참석`,exact:true}).click();expect((await write).status()).toBe(200);
+ await page.reload();await expect(page.locator('.date-cell.selected .status-label')).toHaveText('참석');
+});
