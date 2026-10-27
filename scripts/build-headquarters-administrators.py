@@ -33,6 +33,18 @@ do $guard$ declare expression text;begin
   execute 'alter table public.{prefix}roster add constraint {prefix}roster_allowed check (('||expression||') or (name=''관리자'' and class_name=''운영자'' and default_status=''absent''))';
  end if;
 end $guard$;
+-- Older Global installers have additional affiliation/default checks. Preserve
+-- their original restrictions for employees while allowing the reserved admin row.
+do $checks$ declare item record;expression text;begin
+ for item in select conname,pg_get_expr(conbin,conrelid) as body from pg_constraint
+ where conrelid='public.{prefix}roster'::regclass and contype='c'
+ and conname in ('{prefix}roster_class_name_check','{prefix}roster_default_status_check') loop
+  if strpos(item.body,'is_admin')=0 then
+   execute format('alter table public.{prefix}roster drop constraint %I',item.conname);
+   execute format('alter table public.{prefix}roster add constraint %I check (is_admin or (%s))',item.conname,item.body);
+  end if;
+ end loop;
+end $checks$;
 alter table public.{prefix}roster drop constraint if exists {prefix}roster_role_check;
 alter table public.{prefix}roster add constraint {prefix}roster_role_check check((name='관리자')=is_admin);
 insert into public.{prefix}roster(id,name,class_name,default_status,is_admin)

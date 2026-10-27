@@ -27,6 +27,18 @@ do $guard$ declare expression text;begin
   execute 'alter table public.ax_lunch_roster add constraint ax_lunch_roster_allowed check (('||expression||') or (name=''관리자'' and class_name=''운영자'' and default_status=''absent''))';
  end if;
 end $guard$;
+-- Older Global installers have additional affiliation/default checks. Preserve
+-- their original restrictions for employees while allowing the reserved admin row.
+do $checks$ declare item record;expression text;begin
+ for item in select conname,pg_get_expr(conbin,conrelid) as body from pg_constraint
+ where conrelid='public.ax_lunch_roster'::regclass and contype='c'
+ and conname in ('ax_lunch_roster_class_name_check','ax_lunch_roster_default_status_check') loop
+  if strpos(item.body,'is_admin')=0 then
+   execute format('alter table public.ax_lunch_roster drop constraint %I',item.conname);
+   execute format('alter table public.ax_lunch_roster add constraint %I check (is_admin or (%s))',item.conname,item.body);
+  end if;
+ end loop;
+end $checks$;
 alter table public.ax_lunch_roster drop constraint if exists ax_lunch_roster_role_check;
 alter table public.ax_lunch_roster add constraint ax_lunch_roster_role_check check((name='관리자')=is_admin);
 insert into public.ax_lunch_roster(id,name,class_name,default_status,is_admin)
@@ -124,6 +136,18 @@ do $guard$ declare expression text;begin
   execute 'alter table public.global_lunch_roster add constraint global_lunch_roster_allowed check (('||expression||') or (name=''관리자'' and class_name=''운영자'' and default_status=''absent''))';
  end if;
 end $guard$;
+-- Older Global installers have additional affiliation/default checks. Preserve
+-- their original restrictions for employees while allowing the reserved admin row.
+do $checks$ declare item record;expression text;begin
+ for item in select conname,pg_get_expr(conbin,conrelid) as body from pg_constraint
+ where conrelid='public.global_lunch_roster'::regclass and contype='c'
+ and conname in ('global_lunch_roster_class_name_check','global_lunch_roster_default_status_check') loop
+  if strpos(item.body,'is_admin')=0 then
+   execute format('alter table public.global_lunch_roster drop constraint %I',item.conname);
+   execute format('alter table public.global_lunch_roster add constraint %I check (is_admin or (%s))',item.conname,item.body);
+  end if;
+ end loop;
+end $checks$;
 alter table public.global_lunch_roster drop constraint if exists global_lunch_roster_role_check;
 alter table public.global_lunch_roster add constraint global_lunch_roster_role_check check((name='관리자')=is_admin);
 insert into public.global_lunch_roster(id,name,class_name,default_status,is_admin)
@@ -221,6 +245,18 @@ do $guard$ declare expression text;begin
   execute 'alter table public.tmt_lunch_roster add constraint tmt_lunch_roster_allowed check (('||expression||') or (name=''관리자'' and class_name=''운영자'' and default_status=''absent''))';
  end if;
 end $guard$;
+-- Older Global installers have additional affiliation/default checks. Preserve
+-- their original restrictions for employees while allowing the reserved admin row.
+do $checks$ declare item record;expression text;begin
+ for item in select conname,pg_get_expr(conbin,conrelid) as body from pg_constraint
+ where conrelid='public.tmt_lunch_roster'::regclass and contype='c'
+ and conname in ('tmt_lunch_roster_class_name_check','tmt_lunch_roster_default_status_check') loop
+  if strpos(item.body,'is_admin')=0 then
+   execute format('alter table public.tmt_lunch_roster drop constraint %I',item.conname);
+   execute format('alter table public.tmt_lunch_roster add constraint %I check (is_admin or (%s))',item.conname,item.body);
+  end if;
+ end loop;
+end $checks$;
 alter table public.tmt_lunch_roster drop constraint if exists tmt_lunch_roster_role_check;
 alter table public.tmt_lunch_roster add constraint tmt_lunch_roster_role_check check((name='관리자')=is_admin);
 insert into public.tmt_lunch_roster(id,name,class_name,default_status,is_admin)
