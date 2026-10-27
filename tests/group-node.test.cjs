@@ -37,3 +37,10 @@ test('club filters and owner member actions carry validated targets and versions
  await assert.rejects(groupNodeRequest(req({action:'add_participant',id,version:0,tenant:'wrong',userId:id}),opts),e=>e.status===400);
  await groupNodeRequest(req({action:'add_participant',id,version:2,tenant:'tmt',userId:id}),opts);assert.deepEqual(calls.at(-1).p_payload,{id,version:2,tenant:'tmt',userId:id});
 });
+
+test('comment edits validate both the new body and the expected previous content',async()=>{
+ const {groupNodeRequest}=await ready;const calls=[];const options={rpc:async(name,args)=>{calls.push(args);return {};},limit:async()=>true,tenant:'ax',cookieName:'ax_lunch_session',origin:'https://test'};
+ const req=body=>new Request('https://test/api/group-node',{method:'POST',headers:{origin:'https://test','content-type':'application/json',cookie:'ax_lunch_session='+'a'.repeat(64)},body:JSON.stringify(body)});
+ await assert.rejects(groupNodeRequest(req({action:'edit_comment',id,commentId:id,body:'new'}),options),e=>e.status===400);
+ await groupNodeRequest(req({action:'edit_comment',id,commentId:id,body:'new',expectedBody:'old'}),options);assert.equal(calls.at(-1).p_payload.expectedBody,'old');assert.equal(calls.at(-1).p_payload.body,'new');
+});

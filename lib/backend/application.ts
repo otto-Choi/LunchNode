@@ -18,7 +18,7 @@ export function createApplication({env,rpcFactory=supabaseRpc}:{env:Env;rpcFacto
  }
  const available=(id:HeadquartersId)=>{try{validate(id);return true;}catch{return false;}};
  async function backend(id:HeadquartersId){
-  const c=validate(id),rawRpc=rpcFactory(c.url!,c.key!);let axNamespace:AxNamespace='ax';let rpc=tenantRpc(rawRpc,id,axNamespace);let info:{tenant?:string;globalRosterRevision?:number}|undefined;
+  const c=validate(id),rawRpc=rpcFactory(c.url!,c.key!);let axNamespace:AxNamespace='ax';let rpc=tenantRpc(rawRpc,id,axNamespace);let info:{tenant?:string;globalRosterRevision?:number;adminAccountsRevision?:number}|undefined;
   try{info=await rpc('lunch_tenant_info',{});}catch(error){
    // Only a genuinely absent function permits legacy access. Outages never switch namespaces.
    if(id!=='ax'||!(error instanceof ApiError)||error.code!=='RPC_MISSING')throw error;
@@ -30,7 +30,7 @@ export function createApplication({env,rpcFactory=supabaseRpc}:{env:Env;rpcFacto
   const t=tenantConfig(id);
   // Keep the old DB spelling usable until the atomic name correction is applied.
   const roster=id==='global'&&info?.globalRosterRevision!==1?t.roster.map(p=>p.name==='이은서'?{...p,name:'이윤서'}:p):t.roster;
-  return {rpc,rawRpc,sessionCookieName:id==='ax'&&axNamespace==='legacy'?'lunch_session':`${id}_lunch_session`,service:createBackend({rpc,inviteCode:c.invite||'',adminSecret:c.admin||'',cronSecret:env.CRON_SECRET||'',origin:env.APP_ORIGIN||undefined,secureCookies:env.NODE_ENV==='production',tenantId:id,requireRosterGate:true,roster,policy:t.policy,cookieStyle:id==='ax'&&axNamespace==='legacy'?'legacy':'namespaced'})};
+  return {rpc,rawRpc,sessionCookieName:id==='ax'&&axNamespace==='legacy'?'lunch_session':`${id}_lunch_session`,service:createBackend({rpc,inviteCode:c.invite||'',adminSecret:c.admin||'',cronSecret:env.CRON_SECRET||'',origin:env.APP_ORIGIN||undefined,secureCookies:env.NODE_ENV==='production',tenantId:id,requireRosterGate:true,administratorEnabled:info?.adminAccountsRevision===1,roster,policy:t.policy,cookieStyle:id==='ax'&&axNamespace==='legacy'?'legacy':'namespaced'})};
  }
 
  async function handle(endpoint:Endpoint,request:Request){try{

@@ -40,6 +40,7 @@ jobs:
           python scripts/build-tmt-schema.py
           python scripts/build-continuous-operation.py
           python scripts/build-persistent-clubs.py
+          python scripts/build-headquarters-administrators.py
           python scripts/build-before-cutover.py
           git diff --exit-code -- supabase/ CUTOVER_GUIDE.md
       - run: npm run typecheck

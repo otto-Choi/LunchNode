@@ -5,10 +5,11 @@ import { ApiError, makeRosterGate, hasRosterGate, rosterGateCookie, checkOrigin,
 export type Rpc = <T=unknown>(name: string, args: Record<string,unknown>) => Promise<T>;
 export type Snapshot = { version:number; state:State; people:Person[]; dates:string[]; user:Person|null; now:string };
 type Credentials = { id:string; pin_hash:string; user:Person };
-type Options = { rpc:Rpc; inviteCode:string; cronSecret:string; adminSecret?:string; origin?:string; secureCookies:boolean; retryDelay?:()=>Promise<void>; roster?:Person[]; policy?:MatchingPolicy; tenantId?:string; requireRosterGate?:boolean; cookieStyle?:'legacy'|'namespaced' };
+type Options = { rpc:Rpc; inviteCode:string; cronSecret:string; adminSecret?:string; origin?:string; secureCookies:boolean; retryDelay?:()=>Promise<void>; roster?:Person[]; policy?:MatchingPolicy; tenantId?:string; requireRosterGate?:boolean; administratorEnabled?:boolean; cookieStyle?:'legacy'|'namespaced' };
 export function createBackend(options:Options) {
   const {rpc}=options;const roster=options.roster||ROSTER,policy=options.policy||matchingPolicy,tenant=options.tenantId||'ax',cookieName=options.cookieStyle==='namespaced'?`${tenant}_lunch_session`:tenant==='ax'?'lunch_session':`lunch_session_${tenant}`,gateName=options.cookieStyle==='namespaced'?`${tenant}_lunch_roster`:`lunch_roster_${tenant}`;
-  const member=(name:string)=>roster.find(p=>p.name===name.normalize('NFKC').trim());
+  const loginRoster=options.administratorEnabled?[...roster,{id:'administrator',name:'관리자',className:'운영자',defaultStatus:'absent' as const,isAdmin:true}]:roster;
+  const member=(name:string)=>loginRoster.find(p=>p.name===name.normalize('NFKC').trim());
   const hashToken=(token:string)=>digest(tenant==='ax'?token:`${tenant}:${token}`);
   const cookie=(token:string)=>sessionCookie(token,options.secureCookies,cookieName);
   const delay=options.retryDelay||(()=>new Promise<void>(resolve=>setTimeout(resolve,Math.floor(Math.random()*12)+2)));
@@ -30,6 +31,7 @@ export function createBackend(options:Options) {
       const before=JSON.stringify(snap.state);const now=new Date(snap.now);
       syncDue(snap.state,snap.dates,snap.people,now,Math.random,policy);
       if(change){
+        if(snap.user?.isAdmin)throw new ApiError(403,'ADMIN_PARTICIPATION','관리자 계정은 점심 신청·조 편성 대상이 아닙니다.');
         for(const date of change.dates){
           if(!snap.dates.includes(date))throw new ApiError(400,'DATE','운영 기간의 평일만 신청할 수 있습니다.');
           if(now>=cutoff(date)||snap.state.days[date]?.phase==='final')throw new ApiError(409,'CLOSED','오전 11시 마감 이후에는 변경할 수 없습니다.');
@@ -53,10 +55,10 @@ export function createBackend(options:Options) {
       if(!options.inviteCode)throw new ApiError(503,'CONFIG','초대 코드 설정이 필요합니다.');
       if(body.action==='roster'){
         if(!hasRosterGate(request,gateName,tenant,options.inviteCode))throw new ApiError(403,'INVITE','초대 코드를 먼저 확인해 주세요.');
-        return response({people:roster});
+        return response({people:loginRoster});
       }
       if(typeof body.invite!=='string'||!secretEqual(body.invite,options.inviteCode))throw new ApiError(403,'INVITE','초대 코드가 올바르지 않습니다.');
-      return response({people:roster},200,rosterGateCookie(makeRosterGate(tenant,options.inviteCode),options.secureCookies,gateName));
+      return response({people:loginRoster},200,rosterGateCookie(makeRosterGate(tenant,options.inviteCode),options.secureCookies,gateName));
     }
     if(body.action==='logout'){
       await rpc('lunch_end_session',{p_token_hash:tokenHash(request)});
@@ -67,6 +69,7 @@ export function createBackend(options:Options) {
     const name=typeof body.name==='string'?body.name.normalize('NFKC').trim():'';
     const pin=pinValue(body.pin);await throttle(request,name);
     if(!member(name))throw new ApiError(400,'ROSTER','본부 명단에 등록된 이름만 이용할 수 있습니다.');
+    if(body.action==='register'&&member(name)?.isAdmin)throw new ApiError(403,'ADMIN_ACCOUNT','관리자 계정은 최초 등록 대신 로그인해 주세요.');
     const token=newToken();let user:Person;
     if(body.action==='register') {
       if(!options.inviteCode)throw new ApiError(503,'CONFIG','운영자가 초대 코드를 설정해야 합니다.');
@@ -104,11 +107,11 @@ export function createBackend(options:Options) {
     await rpc('lunch_cleanup',{});return response({ok:true,at:result.now});
   }
   async function admin(request:Request) {
-    checkOrigin(request,options.origin);await requireIdentity(request);const body=await readJson(request);
+    checkOrigin(request,options.origin);const actor=await requireIdentity(request);const body=await readJson(request);
     const ip=(request.headers.get('x-vercel-forwarded-for')||request.headers.get('x-forwarded-for')||'unknown').split(',')[0].trim();
     if(!await rpc<boolean>('lunch_rate_limit',{p_key:digest(`admin:${ip}`),p_limit:30}))throw new ApiError(429,'RATE_LIMIT','시도 횟수를 초과했습니다. 15분 후 다시 시도해 주세요.');
-    if(!options.adminSecret||options.adminSecret.length<32)throw new ApiError(503,'ADMIN_CONFIG','운영자 키 설정이 필요합니다.');
-    if(typeof body.key!=='string'||!secretEqual(body.key,options.adminSecret))throw new ApiError(403,'ADMIN','운영자 키가 올바르지 않습니다.');
+    if(!actor.isAdmin&&(!options.adminSecret||options.adminSecret.length<32))throw new ApiError(503,'ADMIN_CONFIG','운영자 키 설정이 필요합니다.');
+    if(!actor.isAdmin&&(typeof body.key!=='string'||!secretEqual(body.key,options.adminSecret||'')))throw new ApiError(403,'ADMIN','운영자 키가 올바르지 않습니다.');
     if(body.action==='check')return response({ok:true,message:'운영자 인증이 완료되었습니다.'});
     if(body.action==='status')return response(await rpc('lunch_system_status',{}));
     if(body.action==='initial_match'){
