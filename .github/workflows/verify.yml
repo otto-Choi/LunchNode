@@ -1,7 +1,7 @@
 name: Verify backend and application
 on:
   push:
-    branches: [main, tmt-headquarters]
+    branches: [main]
   pull_request:
   workflow_dispatch:
 permissions:
