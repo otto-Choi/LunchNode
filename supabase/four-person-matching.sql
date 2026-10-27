@@ -27,7 +27,8 @@ begin
    if jsonb_typeof(proposed_day.value->'groups') is distinct from 'array' then raise exception using errcode='LN400',message='조 편성 형식을 확인해 주세요.';end if;
    for proposed_group in select value from jsonb_array_elements(proposed_day.value->'groups') loop
     if jsonb_typeof(proposed_group->'members') is distinct from 'array' then raise exception using errcode='LN400',message='조 편성 형식을 확인해 주세요.';end if;
-    if jsonb_array_length(proposed_group->'members') not between 1 and 4 then raise exception using errcode='LN400',message='조당 최대 인원은 4명입니다.';end if;
+    if jsonb_array_length(proposed_group->'members') not between 1 and 5 then raise exception using errcode='LN400',message='일반 조는 최대 4명, 도시락만 조는 최대 5명입니다.';end if;
+    if jsonb_array_length(proposed_group->'members')=5 and (proposed_group->>'meal' is distinct from 'lunchbox' or exists(select 1 from jsonb_array_elements(proposed_group->'members') member where p_data->'choices'->proposed_day.key->(member->>'id')->>'meal' is distinct from 'lunchbox')) then raise exception using errcode='LN400',message='5인 조는 도시락만 신청자로만 구성할 수 있습니다.';end if;
    end loop;
   end if;
  end loop;
@@ -63,9 +64,12 @@ begin
  if exists(select 1 from jsonb_array_elements(p_groups) g where jsonb_typeof(g->'members') is distinct from 'array' or g->>'meal' is null or g->>'meal' not in ('lunchbox','outside')) then
   raise exception using errcode='LN400',message='조 편성 형식을 확인해 주세요.';
  end if;
- if exists(select 1 from jsonb_array_elements(p_groups) g where jsonb_array_length(g->'members') not between 1 and 4) then
-  raise exception using errcode='LN400',message='조당 인원은 1~4명이어야 합니다.';
+ if exists(select 1 from jsonb_array_elements(p_groups) g where jsonb_array_length(g->'members') not between 1 and 5) then
+  raise exception using errcode='LN400',message='조당 인원은 1~5명이어야 합니다.';
  end if;
+ if exists(select 1 from jsonb_array_elements(p_groups) g where jsonb_array_length(g->'members')=5 and
+ (g->>'meal' is distinct from 'lunchbox' or exists(select 1 from jsonb_array_elements(g->'members') member where current_row.data->'choices'->p_date->(member->>'id')->>'meal' is distinct from 'lunchbox'))) then
+ raise exception using errcode='LN400',message='5인 조는 도시락만 신청자로만 구성할 수 있습니다.';end if;
  select coalesce(array_agg(m->>'id' order by m->>'id'),'{}'::text[]) into actual_ids
  from jsonb_array_elements(p_groups) g cross join lateral jsonb_array_elements(g->'members') m;
  select coalesce(array_agg(key order by key),'{}'::text[]) into expected_ids from jsonb_each(coalesce(current_row.data->'choices'->p_date,'{}'::jsonb)) where value->>'status'='join';
@@ -108,9 +112,12 @@ begin
  if exists(select 1 from jsonb_array_elements(p_groups) g where jsonb_typeof(g->'members') is distinct from 'array' or g->>'meal' is null or g->>'meal' not in ('lunchbox','outside')) then
   raise exception using errcode='LN400',message='조 편성 형식을 확인해 주세요.';
  end if;
- if exists(select 1 from jsonb_array_elements(p_groups) g where jsonb_array_length(g->'members') not between 1 and 4) then
-  raise exception using errcode='LN400',message='조당 인원은 1~4명이어야 합니다.';
+ if exists(select 1 from jsonb_array_elements(p_groups) g where jsonb_array_length(g->'members') not between 1 and 5) then
+  raise exception using errcode='LN400',message='조당 인원은 1~5명이어야 합니다.';
  end if;
+ if exists(select 1 from jsonb_array_elements(p_groups) g where jsonb_array_length(g->'members')=5 and
+ (g->>'meal' is distinct from 'lunchbox' or exists(select 1 from jsonb_array_elements(g->'members') member where current_row.data->'choices'->p_date->(member->>'id')->>'meal' is distinct from 'lunchbox'))) then
+ raise exception using errcode='LN400',message='5인 조는 도시락만 신청자로만 구성할 수 있습니다.';end if;
  select coalesce(array_agg(m->>'id' order by m->>'id'),'{}'::text[]) into actual_ids
  from jsonb_array_elements(p_groups) g cross join lateral jsonb_array_elements(g->'members') m;
  select coalesce(array_agg(key order by key),'{}'::text[]) into expected_ids from jsonb_each(coalesce(current_row.data->'choices'->p_date,'{}'::jsonb)) where value->>'status'='join';
@@ -154,7 +161,8 @@ begin
    if jsonb_typeof(proposed_day.value->'groups') is distinct from 'array' then raise exception using errcode='LN400',message='조 편성 형식을 확인해 주세요.';end if;
    for proposed_group in select value from jsonb_array_elements(proposed_day.value->'groups') loop
     if jsonb_typeof(proposed_group->'members') is distinct from 'array' then raise exception using errcode='LN400',message='조 편성 형식을 확인해 주세요.';end if;
-    if jsonb_array_length(proposed_group->'members') not between 1 and 4 then raise exception using errcode='LN400',message='조당 최대 인원은 4명입니다.';end if;
+    if jsonb_array_length(proposed_group->'members') not between 1 and 5 then raise exception using errcode='LN400',message='일반 조는 최대 4명, 도시락만 조는 최대 5명입니다.';end if;
+    if jsonb_array_length(proposed_group->'members')=5 and (proposed_group->>'meal' is distinct from 'lunchbox' or exists(select 1 from jsonb_array_elements(proposed_group->'members') member where p_data->'choices'->proposed_day.key->(member->>'id')->>'meal' is distinct from 'lunchbox')) then raise exception using errcode='LN400',message='5인 조는 도시락만 신청자로만 구성할 수 있습니다.';end if;
    end loop;
   end if;
  end loop;
@@ -190,9 +198,12 @@ begin
  if exists(select 1 from jsonb_array_elements(p_groups) g where jsonb_typeof(g->'members') is distinct from 'array' or g->>'meal' is null or g->>'meal' not in ('lunchbox','outside')) then
   raise exception using errcode='LN400',message='조 편성 형식을 확인해 주세요.';
  end if;
- if exists(select 1 from jsonb_array_elements(p_groups) g where jsonb_array_length(g->'members') not between 1 and 4) then
-  raise exception using errcode='LN400',message='조당 인원은 1~4명이어야 합니다.';
+ if exists(select 1 from jsonb_array_elements(p_groups) g where jsonb_array_length(g->'members') not between 1 and 5) then
+  raise exception using errcode='LN400',message='조당 인원은 1~5명이어야 합니다.';
  end if;
+ if exists(select 1 from jsonb_array_elements(p_groups) g where jsonb_array_length(g->'members')=5 and
+ (g->>'meal' is distinct from 'lunchbox' or exists(select 1 from jsonb_array_elements(g->'members') member where current_row.data->'choices'->p_date->(member->>'id')->>'meal' is distinct from 'lunchbox'))) then
+ raise exception using errcode='LN400',message='5인 조는 도시락만 신청자로만 구성할 수 있습니다.';end if;
  select coalesce(array_agg(m->>'id' order by m->>'id'),'{}'::text[]) into actual_ids
  from jsonb_array_elements(p_groups) g cross join lateral jsonb_array_elements(g->'members') m;
  select coalesce(array_agg(key order by key),'{}'::text[]) into expected_ids from jsonb_each(coalesce(current_row.data->'choices'->p_date,'{}'::jsonb)) where value->>'status'='join';
@@ -235,9 +246,12 @@ begin
  if exists(select 1 from jsonb_array_elements(p_groups) g where jsonb_typeof(g->'members') is distinct from 'array' or g->>'meal' is null or g->>'meal' not in ('lunchbox','outside')) then
   raise exception using errcode='LN400',message='조 편성 형식을 확인해 주세요.';
  end if;
- if exists(select 1 from jsonb_array_elements(p_groups) g where jsonb_array_length(g->'members') not between 1 and 4) then
-  raise exception using errcode='LN400',message='조당 인원은 1~4명이어야 합니다.';
+ if exists(select 1 from jsonb_array_elements(p_groups) g where jsonb_array_length(g->'members') not between 1 and 5) then
+  raise exception using errcode='LN400',message='조당 인원은 1~5명이어야 합니다.';
  end if;
+ if exists(select 1 from jsonb_array_elements(p_groups) g where jsonb_array_length(g->'members')=5 and
+ (g->>'meal' is distinct from 'lunchbox' or exists(select 1 from jsonb_array_elements(g->'members') member where current_row.data->'choices'->p_date->(member->>'id')->>'meal' is distinct from 'lunchbox'))) then
+ raise exception using errcode='LN400',message='5인 조는 도시락만 신청자로만 구성할 수 있습니다.';end if;
  select coalesce(array_agg(m->>'id' order by m->>'id'),'{}'::text[]) into actual_ids
  from jsonb_array_elements(p_groups) g cross join lateral jsonb_array_elements(g->'members') m;
  select coalesce(array_agg(key order by key),'{}'::text[]) into expected_ids from jsonb_each(coalesce(current_row.data->'choices'->p_date,'{}'::jsonb)) where value->>'status'='join';
@@ -281,7 +295,8 @@ begin
    if jsonb_typeof(proposed_day.value->'groups') is distinct from 'array' then raise exception using errcode='LN400',message='조 편성 형식을 확인해 주세요.';end if;
    for proposed_group in select value from jsonb_array_elements(proposed_day.value->'groups') loop
     if jsonb_typeof(proposed_group->'members') is distinct from 'array' then raise exception using errcode='LN400',message='조 편성 형식을 확인해 주세요.';end if;
-    if jsonb_array_length(proposed_group->'members') not between 1 and 4 then raise exception using errcode='LN400',message='조당 최대 인원은 4명입니다.';end if;
+    if jsonb_array_length(proposed_group->'members') not between 1 and 5 then raise exception using errcode='LN400',message='일반 조는 최대 4명, 도시락만 조는 최대 5명입니다.';end if;
+    if jsonb_array_length(proposed_group->'members')=5 and (proposed_group->>'meal' is distinct from 'lunchbox' or exists(select 1 from jsonb_array_elements(proposed_group->'members') member where p_data->'choices'->proposed_day.key->(member->>'id')->>'meal' is distinct from 'lunchbox')) then raise exception using errcode='LN400',message='5인 조는 도시락만 신청자로만 구성할 수 있습니다.';end if;
    end loop;
   end if;
  end loop;
@@ -317,9 +332,12 @@ begin
  if exists(select 1 from jsonb_array_elements(p_groups) g where jsonb_typeof(g->'members') is distinct from 'array' or g->>'meal' is null or g->>'meal' not in ('lunchbox','outside')) then
   raise exception using errcode='LN400',message='조 편성 형식을 확인해 주세요.';
  end if;
- if exists(select 1 from jsonb_array_elements(p_groups) g where jsonb_array_length(g->'members') not between 1 and 4) then
-  raise exception using errcode='LN400',message='조당 인원은 1~4명이어야 합니다.';
+ if exists(select 1 from jsonb_array_elements(p_groups) g where jsonb_array_length(g->'members') not between 1 and 5) then
+  raise exception using errcode='LN400',message='조당 인원은 1~5명이어야 합니다.';
  end if;
+ if exists(select 1 from jsonb_array_elements(p_groups) g where jsonb_array_length(g->'members')=5 and
+ (g->>'meal' is distinct from 'lunchbox' or exists(select 1 from jsonb_array_elements(g->'members') member where current_row.data->'choices'->p_date->(member->>'id')->>'meal' is distinct from 'lunchbox'))) then
+ raise exception using errcode='LN400',message='5인 조는 도시락만 신청자로만 구성할 수 있습니다.';end if;
  select coalesce(array_agg(m->>'id' order by m->>'id'),'{}'::text[]) into actual_ids
  from jsonb_array_elements(p_groups) g cross join lateral jsonb_array_elements(g->'members') m;
  select coalesce(array_agg(key order by key),'{}'::text[]) into expected_ids from jsonb_each(coalesce(current_row.data->'choices'->p_date,'{}'::jsonb)) where value->>'status'='join';
@@ -362,9 +380,12 @@ begin
  if exists(select 1 from jsonb_array_elements(p_groups) g where jsonb_typeof(g->'members') is distinct from 'array' or g->>'meal' is null or g->>'meal' not in ('lunchbox','outside')) then
   raise exception using errcode='LN400',message='조 편성 형식을 확인해 주세요.';
  end if;
- if exists(select 1 from jsonb_array_elements(p_groups) g where jsonb_array_length(g->'members') not between 1 and 4) then
-  raise exception using errcode='LN400',message='조당 인원은 1~4명이어야 합니다.';
+ if exists(select 1 from jsonb_array_elements(p_groups) g where jsonb_array_length(g->'members') not between 1 and 5) then
+  raise exception using errcode='LN400',message='조당 인원은 1~5명이어야 합니다.';
  end if;
+ if exists(select 1 from jsonb_array_elements(p_groups) g where jsonb_array_length(g->'members')=5 and
+ (g->>'meal' is distinct from 'lunchbox' or exists(select 1 from jsonb_array_elements(g->'members') member where current_row.data->'choices'->p_date->(member->>'id')->>'meal' is distinct from 'lunchbox'))) then
+ raise exception using errcode='LN400',message='5인 조는 도시락만 신청자로만 구성할 수 있습니다.';end if;
  select coalesce(array_agg(m->>'id' order by m->>'id'),'{}'::text[]) into actual_ids
  from jsonb_array_elements(p_groups) g cross join lateral jsonb_array_elements(g->'members') m;
  select coalesce(array_agg(key order by key),'{}'::text[]) into expected_ids from jsonb_each(coalesce(current_row.data->'choices'->p_date,'{}'::jsonb)) where value->>'status'='join';

@@ -21,7 +21,8 @@ for tenant in ['ax','global','tmt']:
    if jsonb_typeof(proposed_day.value->'groups') is distinct from 'array' then raise exception using errcode='LN400',message='조 편성 형식을 확인해 주세요.';end if;
    for proposed_group in select value from jsonb_array_elements(proposed_day.value->'groups') loop
     if jsonb_typeof(proposed_group->'members') is distinct from 'array' then raise exception using errcode='LN400',message='조 편성 형식을 확인해 주세요.';end if;
-    if jsonb_array_length(proposed_group->'members') not between 1 and 4 then raise exception using errcode='LN400',message='조당 최대 인원은 4명입니다.';end if;
+    if jsonb_array_length(proposed_group->'members') not between 1 and 5 then raise exception using errcode='LN400',message='일반 조는 최대 4명, 도시락만 조는 최대 5명입니다.';end if;
+    if jsonb_array_length(proposed_group->'members')=5 and (proposed_group->>'meal' is distinct from 'lunchbox' or exists(select 1 from jsonb_array_elements(proposed_group->'members') member where p_data->'choices'->proposed_day.key->(member->>'id')->>'meal' is distinct from 'lunchbox')) then raise exception using errcode='LN400',message='5인 조는 도시락만 신청자로만 구성할 수 있습니다.';end if;
    end loop;
   end if;
  end loop;
@@ -29,7 +30,16 @@ for tenant in ['ax','global','tmt']:
  assert needle in commit
  parts.append(commit.replace(needle,guard+needle))
  for suffix in ['admin_rematch','admin_initial_match']:
-  parts.append(function(previous,suffix).replace('not between 1 and 5','not between 1 and 4').replace('조당 인원은 1~5명','조당 인원은 1~4명'))
+  fn=function(previous,suffix)
+  guard=""" if exists(select 1 from jsonb_array_elements(p_groups) g where jsonb_array_length(g->'members')=5 and
+ (g->>'meal' is distinct from 'lunchbox' or exists(select 1 from jsonb_array_elements(g->'members') member where current_row.data->'choices'->p_date->(member->>'id')->>'meal' is distinct from 'lunchbox'))) then
+ raise exception using errcode='LN400',message='5인 조는 도시락만 신청자로만 구성할 수 있습니다.';end if;
+"""
+  needle=' select coalesce(array_agg(m->>'
+  assert needle in fn
+  fn=fn.replace(needle,guard+needle,1)
+  parts.append(fn)
+
  parts.append(f"revoke all on function public.{prefix}commit_state(text,integer,jsonb,text[],boolean),public.{prefix}admin_rematch(text,integer,text,jsonb),public.{prefix}admin_initial_match(text,integer,text,jsonb) from public,anon,authenticated;")
 parts.append("notify pgrst, 'reload schema';\ncommit;\n")
 text='\n'.join(parts)

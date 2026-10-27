@@ -49,21 +49,26 @@ export function weekdays(start: string, end: string) {
 }
 const shuffle = <T,>(items:T[], random:()=>number) => { const a=[...items];for(let i=a.length-1;i>0;i--){const j=Math.floor(random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a; };
 export const MAX_GROUP_SIZE=4;
-function sizes(n:number):number[] {
+export const LUNCHBOX_ONLY_MAX_GROUP_SIZE=5;
+function sizes(n:number,maximum=MAX_GROUP_SIZE,cohesive=false):number[] {
  const plans:number[][]=[[]];
- const score=(plan:number[])=>[plan.reduce((v,n)=>v+Math.max(0,3-n),0),plan.filter(n=>n===3).length];
+ const score=(plan:number[])=>[...(cohesive?[plan.length]:[]),plan.reduce((v,n)=>v+Math.max(0,3-n),0),plan.filter(n=>n===5).length,plan.filter(n=>n===3).length];
  for(let total=1;total<=n;total++){
-  const options=Array.from({length:Math.min(MAX_GROUP_SIZE,total)},(_,i)=>[i+1,...plans[total-i-1]]);
+  const options=Array.from({length:Math.min(maximum,total)},(_,i)=>[i+1,...plans[total-i-1]]);
   plans[total]=options.sort((a,b)=>compareCost(score(a),score(b)))[0];
  }
  return plans[n];
 }
+function memberCapacity(members:Person[],meal:MealType,choice:(person:Person)=>Meal){
+ return meal==='lunchbox'&&members.every(p=>choice(p)==='lunchbox')?LUNCHBOX_ONLY_MAX_GROUP_SIZE:MAX_GROUP_SIZE;
+}
+export function groupLimit(group:Pick<Group,'meal'|'members'>,choices?:Record<string,Choice>){return memberCapacity(group.members,group.meal,p=>choices?.[p.id]?.meal||'any');}
 // Keep mandatory-menu participants together and avoid opposite soft preferences
 // inside those groups before comparing group sizes, encounter history or balance.
 function menuStructure(members:Person[],meal:MealType,choice:(person:Person)=>Meal) {
  const strict=members.filter(p=>choice(p)===meal).length;
  const opposite=members.filter(p=>choice(p)===(meal==='lunchbox'?'prefer_outside':'prefer_lunchbox')).length;
- return {cohesion:strict?MAX_GROUP_SIZE-strict:0,opposite:strict*opposite};
+ return {cohesion:strict?(meal==='lunchbox'?LUNCHBOX_ONLY_MAX_GROUP_SIZE:MAX_GROUP_SIZE)-strict:0,opposite:strict*opposite};
 }
 export function encounters(state:State, date:string, a:string, b:string) {
   return Object.entries(state.days).filter(([d,v])=>d<date&&v.phase==='final').reduce((n,[,v])=>n+Number(v.groups.some(g=>g.members.some(p=>p.id===a)&&g.members.some(p=>p.id===b))),0);
@@ -124,7 +129,7 @@ export function initialMatch(state:State,date:string,people:Person[],random=Math
     for(const meal of ['lunchbox','outside'] as const){
       const strict=shuffle(pool[meal].filter(p=>choices[p.id].meal===meal),random);
       let flexible=shuffle(pool[meal].filter(p=>choices[p.id].meal!==meal),random),offset=0;
-      for(const size of sizes(strict.length)){
+      for(const size of sizes(strict.length,meal==='lunchbox'?LUNCHBOX_ONLY_MAX_GROUP_SIZE:MAX_GROUP_SIZE,meal==='lunchbox')){
         const members=strict.slice(offset,offset+size);offset+=size;
         while(members.length<MAX_GROUP_SIZE){
           const next=flexible.findIndex(p=>choices[p.id].meal!==(meal==='lunchbox'?'prefer_outside':'prefer_lunchbox'));
@@ -164,8 +169,9 @@ export function initialMatch(state:State,date:string,people:Person[],random=Math
         const candidate={mask,group:{id:'',meal,members},cost:evaluate(members,meal)};
         for(const i of indices)byPerson[i].push(candidate);
       }
-      if(indices.length===MAX_GROUP_SIZE)return;
+      if(indices.length===LUNCHBOX_ONLY_MAX_GROUP_SIZE||indices.length===MAX_GROUP_SIZE&&!indices.every(i=>choices[joined[i].id].meal==='lunchbox'))return;
       for(let i=start;i<joined.length;i++){
+        if(indices.length===MAX_GROUP_SIZE&&choices[joined[i].id].meal!=='lunchbox')continue;
         const nextBox=box&&allowsMeal(choices[joined[i].id].meal,'lunchbox');
         const nextOut=out&&allowsMeal(choices[joined[i].id].meal,'outside');
         if(nextBox||nextOut)enumerate([...indices,i],i+1,mask|(1<<i),nextBox,nextOut);
@@ -208,7 +214,7 @@ export function addMember(state:State,date:string,person:Person,meal:Meal,random
     }
     return value;
   };
-  const candidates:{group:Group|undefined;actual:MealType;cost:bigint}[]=shuffle(day.groups.filter(g=>g.members.length<MAX_GROUP_SIZE&&allowsMeal(meal,g.meal)),random).map(group=>({group,actual:group.meal,cost:cost([...group.members,person],group.meal)-cost(group.members,group.meal)}));
+  const candidates:{group:Group|undefined;actual:MealType;cost:bigint}[]=shuffle(day.groups.filter(g=>g.members.length+1<=memberCapacity([...g.members,person],g.meal,choice)&&allowsMeal(meal,g.meal)),random).map(group=>({group,actual:group.meal,cost:cost([...group.members,person],group.meal)-cost(group.members,group.meal)}));
   for(const actual of ['lunchbox','outside'] as const)if(allowsMeal(meal,actual))candidates.push({group:undefined as Group|undefined,actual,cost:cost([person],actual)});
   candidates.sort((a,b)=>a.cost<b.cost?-1:a.cost>b.cost?1:0);
   const winner=candidates[0];
@@ -229,7 +235,7 @@ export function syncDue(state:State,dates:string[],people:Person[],now=new Date(
   applyDefaults(state,pending,people);
   for(const date of pending){if(now<matchTime(date))continue;
     if(!state.days[date])state.days[date]={groups:initialMatch(state,date,people,random,policy),phase:'matched',matchedAt:now.toISOString()};
-    if(state.days[date].phase!=='final'&&now<cutoff(date)&&state.days[date].groups.some(g=>g.members.length>MAX_GROUP_SIZE||menuStructure(g.members,g.meal,p=>state.choices[date]?.[p.id]?.meal||'any').opposite>0)){
+    if(state.days[date].phase!=='final'&&now<cutoff(date)&&state.days[date].groups.some(g=>g.members.length>groupLimit(g,state.choices[date])||menuStructure(g.members,g.meal,p=>state.choices[date]?.[p.id]?.meal||'any').opposite>0)){
       state.days[date]={...state.days[date],groups:initialMatch(state,date,people,random,policy),rematchedAt:now.toISOString()};
     }
     if(state.days[date].phase!=='final'){

@@ -3,7 +3,7 @@ const ready=Promise.all([import('../lib/domain.ts'),import('../lib/roster.ts')])
 const date='2026-10-29';
 function rng(seed=31){return()=>{seed=(seed*1664525+1013904223)>>>0;return seed/4294967296;};}
 function make(d,people,meals){const state=d.emptyState();state.choices[date]=Object.fromEntries(people.map((p,i)=>[p.id,{status:'join',meal:meals[i]}]));return state;}
-function verify(d,state,people,groups){assert.equal(new Set(groups.flatMap(g=>g.members.map(p=>p.id))).size,people.length);for(const g of groups){assert.ok(g.members.length>=1&&g.members.length<=4);for(const p of g.members)assert.ok(d.allowsMeal(state.choices[date][p.id].meal,g.meal));}}
+function verify(d,state,people,groups){assert.equal(new Set(groups.flatMap(g=>g.members.map(p=>p.id))).size,people.length);for(const g of groups){assert.ok(g.members.length>=1&&g.members.length<=d.groupLimit(g,state.choices[date]));for(const p of g.members)assert.ok(d.allowsMeal(state.choices[date][p.id].meal,g.meal));}}
 test('mandatory menu participants stay together before new encounters or demographic balance',async()=>{
  const [d,{ROSTER}]=await ready;const people=ROSTER.slice(0,8);
  for(const mandatory of ['lunchbox','outside']){
@@ -35,4 +35,17 @@ test('invalid provisional groups repair before cutoff while historical five-pers
  state.days['2026-10-28']={phase:'final',matchedAt:'2026-10-27T22:00:00+09:00',groups:structuredClone(old)};
  state.days[date]={phase:'matched',matchedAt:'2026-10-28T22:00:00+09:00',groups:structuredClone(old)};const history=structuredClone(state.days['2026-10-28']);
  d.syncDue(state,['2026-10-28',date],ROSTER,new Date('2026-10-29T10:00:00+09:00'),rng());verify(d,state,ROSTER,state.days[date].groups);assert.deepEqual(state.days['2026-10-28'],history);assert.equal(state.days[date].phase,'matched');
+});
+
+
+test('five seats are available only to a pure lunchbox-only group, including late joining',async()=>{
+ const [d,{ROSTER}]=await ready;const people=ROSTER.slice(0,5);
+ for(const meals of [Array(5).fill('lunchbox'),Array(5).fill('outside'),['lunchbox','lunchbox','lunchbox','lunchbox','any'],['lunchbox','lunchbox','lunchbox','lunchbox','prefer_lunchbox']]){
+  const state=make(d,people,meals);const groups=d.initialMatch(state,date,people,rng());verify(d,state,people,groups);
+  assert.equal(groups.some(g=>g.members.length===5),meals.every(m=>m==='lunchbox'));
+ }
+ const state=make(d,people,Array(5).fill('lunchbox'));state.days[date]={phase:'matched',matchedAt:'2026-10-28T22:00:00+09:00',groups:[{id:'box',meal:'lunchbox',members:people.slice(0,4)}]};
+ d.addMember(state,date,people[4],'lunchbox',rng());assert.equal(state.days[date].groups[0].members.length,5);
+ const mixed=make(d,people,['lunchbox','lunchbox','lunchbox','lunchbox','any']);mixed.days[date]={phase:'matched',matchedAt:'2026-10-28T22:00:00+09:00',groups:[{id:'box',meal:'lunchbox',members:people.slice(0,4)}]};
+ d.addMember(mixed,date,people[4],'any',rng());assert.equal(mixed.days[date].groups[0].members.length,4);assert.equal(mixed.days[date].groups.length,2);
 });

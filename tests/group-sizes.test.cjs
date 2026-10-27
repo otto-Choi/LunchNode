@@ -18,10 +18,10 @@ test('recent history and soft menus cannot cause avoidable five-person or three-
  assert.deepEqual(sizes(d.initialMatch(state,date,ROSTER,rng())),expected[20]);
 });
 
-test('strict menus split five attendees instead of exceeding four, while neutral people can fill groups',async()=>{
+test('five-person exception applies to lunchbox-only participants and neutral people retain four-person groups',async()=>{
  const [d,{ROSTER}]=await ready;const date='2026-10-22',people=ROSTER.slice(0,8),state=d.emptyState();
  state.choices[date]=Object.fromEntries(people.map((p,i)=>[p.id,{status:'join',meal:i<5?'lunchbox':'outside'}]));
- let groups=d.initialMatch(state,date,people,rng());assert.deepEqual(sizes(groups),[2,3,3]);for(const g of groups)for(const p of g.members)assert.ok(d.allowsMeal(state.choices[date][p.id].meal,g.meal));
+ let groups=d.initialMatch(state,date,people,rng());assert.deepEqual(sizes(groups),[3,5]);for(const g of groups)for(const p of g.members)assert.ok(d.allowsMeal(state.choices[date][p.id].meal,g.meal));
  state.choices[date][people[4].id].meal='any';groups=d.initialMatch(state,date,people,rng());assert.deepEqual(sizes(groups),[4,4]);for(const g of groups)for(const p of g.members)assert.ok(d.allowsMeal(state.choices[date][p.id].meal,g.meal));
 });
 

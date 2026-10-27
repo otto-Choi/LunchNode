@@ -495,7 +495,7 @@ test('headquarters administrator accounts preserve participants, enforce DB role
  }finally{await db.admin.query('delete from group_node_meetups where id=any($1::uuid[])',[ids]);}
 });
 
-test('all headquarters enforce four-person writes and rematches without rewriting historical five-person records',async()=>{
+test('all headquarters allow five only for pure lunchbox-only writes and rematches while preserving history',async()=>{
  const before=(await db.admin.query("select 'ax' as tenant,version,data from ax_lunch_state union all select 'global',version,data from global_lunch_state union all select 'tmt',version,data from tmt_lunch_state")).rows;
  const sql=await fs.readFile('supabase/four-person-matching.sql','utf8');await db.admin.query(sql);await db.admin.query(sql);
  assert.deepEqual((await db.admin.query("select 'ax' as tenant,version,data from ax_lunch_state union all select 'global',version,data from global_lunch_state union all select 'tmt',version,data from tmt_lunch_state")).rows,before);
@@ -503,6 +503,7 @@ test('all headquarters enforce four-person writes and rematches without rewritin
  for(const tenant of ['ax','global','tmt']){
   const snap=await db.rpc(tenant+'_lunch_snapshot',{p_token_hash:'',p_cron:true});
   const people=snap.people.slice(0,5);const proposed=structuredClone(snap.state);proposed.choices[future]=Object.fromEntries(people.map(p=>[p.id,{status:'join',meal:'lunchbox'}]));
+  proposed.choices[future][people[4].id].meal='any';
   const group={id:'invalid-five',meal:'lunchbox',members:people};proposed.days[future]={phase:'matched',matchedAt:future+'T00:00:00+09:00',groups:[group]};
   await assert.rejects(db.rpc(tenant+'_lunch_commit_state',{p_token_hash:'',p_expected_version:snap.version,p_data:proposed,p_write_dates:[],p_cron:true}),e=>e.status===400);
   const valid=[{...group,id:'four',members:people.slice(0,4)},{...group,id:'one',members:people.slice(4)}];proposed.days[future].groups=valid;
@@ -514,6 +515,12 @@ test('all headquarters enforce four-person writes and rematches without rewritin
    const current=await db.rpc(tenant+'_lunch_snapshot',{p_token_hash:'',p_cron:true});
    await assert.rejects(db.rpc(tenant+'_lunch_admin_rematch',{p_actor_token:token,p_expected_version:current.version,p_date:future,p_groups:[group]}),e=>e.status===400);
    assert.equal(await db.rpc(tenant+'_lunch_admin_rematch',{p_actor_token:token,p_expected_version:current.version,p_date:future,p_groups:valid}),true);
+   const pure=await db.rpc(tenant+'_lunch_snapshot',{p_token_hash:'',p_cron:true});pure.state.choices[future][people[4].id].meal='lunchbox';pure.state.days[future].groups=[group];
+   assert.equal(await db.rpc(tenant+'_lunch_commit_state',{p_token_hash:'',p_expected_version:pure.version,p_data:pure.state,p_write_dates:[],p_cron:true}),true);
+   assert.equal(await db.rpc(tenant+'_lunch_admin_rematch',{p_actor_token:token,p_expected_version:pure.version+1,p_date:future,p_groups:[group]}),true);
+   const outside=await db.rpc(tenant+'_lunch_snapshot',{p_token_hash:'',p_cron:true});outside.state.choices[future]=Object.fromEntries(people.map(p=>[p.id,{status:'join',meal:'outside'}]));outside.state.days[future].groups=[{...group,meal:'outside'}];
+   await assert.rejects(db.rpc(tenant+'_lunch_commit_state',{p_token_hash:'',p_expected_version:outside.version,p_data:outside.state,p_write_dates:[],p_cron:true}),e=>e.status===400);
+
   }finally{await db.admin.query(original);}
   // A legacy five-person final result may remain while unrelated choices change.
   const historical='2026-01-05';await db.admin.query(`update ${tenant}_lunch_state set data=jsonb_set(data,array['days',$1],$2::jsonb,true)`,[historical,JSON.stringify({phase:'final',matchedAt:'2026-01-04T22:00:00+09:00',groups:[group]})]);
