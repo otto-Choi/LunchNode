@@ -1,3 +1,5 @@
+> 이 문서는 기존 AX/Global 이름 변경을 위한 이전 전환 안내입니다. 현재 세 본부 운영은 [README](README.md), [TMT 설정](docs/TMT_SETUP.md), [연속 운영](docs/CONTINUOUS_OPERATION.md)을 따릅니다. 이미 전환된 운영 DB에 이전 전환 SQL을 다시 실행하지 않습니다.
+
 # AX Node / Global 설정
 
 최종 구조와 실행 순서는 **[통합 전환 실행서](CUTOVER_GUIDE.md)**를 따릅니다. 이전 안내 SQL을 아직 실행하지 않은 기존 운영 DB도 통합 쿼리 한 번으로 처리합니다.

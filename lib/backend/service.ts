@@ -66,7 +66,7 @@ export function createBackend(options:Options) {
     if(options.requireRosterGate&&body.action==='login'&&!hasRosterGate(request,gateName,tenant,options.inviteCode))throw new ApiError(403,'INVITE','초대 코드를 먼저 확인해 주세요.');
     const name=typeof body.name==='string'?body.name.normalize('NFKC').trim():'';
     const pin=pinValue(body.pin);await throttle(request,name);
-    if(!member(name))throw new ApiError(400,'ROSTER','등록된 20명만 이용할 수 있습니다.');
+    if(!member(name))throw new ApiError(400,'ROSTER','본부 명단에 등록된 이름만 이용할 수 있습니다.');
     const token=newToken();let user:Person;
     if(body.action==='register') {
       if(!options.inviteCode)throw new ApiError(503,'CONFIG','운영자가 초대 코드를 설정해야 합니다.');
