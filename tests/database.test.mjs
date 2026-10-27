@@ -381,3 +381,18 @@ test('continuous operation preserves data and allows future weekdays beyond the 
  const finite=(await db.admin.query("select lunch_operation_private.calendar_dates('2026-10-22','2026-11-30','2026-10-27T12:00:00+09:00') as dates")).rows[0].dates;assert.equal(finite.at(-1),'2026-11-30');
  const grants=(await db.admin.query("select has_schema_privilege('anon','lunch_operation_private','usage') as browser,has_function_privilege('service_role','lunch_operation_private.calendar_dates(date,date,timestamptz)','execute') as server")).rows[0];assert.deepEqual(grants,{browser:false,server:false});
 });
+
+
+test('Group Node pagination keeps exact totals, stable ordering and private-HQ isolation',async()=>{
+ const owner=(await db.admin.query('select id from tmt_lunch_roster order by id limit 1')).rows[0].id;
+ const {rows}=await db.admin.query("insert into group_node_meetups(title,description,category,min_people,visibility,created_by_tenant,created_by) select 'page QA '||i,'','food',2,case when i>25 then 'headquarters' else 'all' end,'tmt',$1 from generate_series(1,30) i returning id",[owner]);
+ try{
+  for(const row of rows)await db.admin.query('insert into group_node_dates(meetup_id,date) values($1,$2)',[row.id,date]);
+  const group=(tenant,hash,offset)=>db.rpc('group_node_api',{p_tenant:tenant,p_token_hash:hash,p_action:'list',p_payload:{q:'page QA ',offset}});
+  const first=await group('global',digest('group-global'),0),second=await group('global',digest('group-global'),20);
+  assert.equal(first.total,25);assert.equal(first.meetups.length,20);assert.equal(second.total,25);assert.equal(second.meetups.length,5);
+  assert.equal(new Set([...first.meetups,...second.meetups].map(m=>m.id)).size,25);assert.ok([...first.meetups,...second.meetups].every(m=>m.visibility==='all'));
+  assert.deepEqual((await group('global',digest('group-global'),0)).meetups.map(m=>m.id),first.meetups.map(m=>m.id));
+  assert.equal((await group('tmt',digest('tmt:'+owner),0)).total,30);
+ }finally{await db.admin.query('delete from group_node_meetups where id=any($1::uuid[])',[rows.map(r=>r.id)]);}
+});

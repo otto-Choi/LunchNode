@@ -42,6 +42,26 @@ revoke all on function public.{prefix}snapshot(text,boolean),public.{prefix}comm
 """)
  parts.append(f"create index if not exists {prefix}admin_actor on public.{prefix}admin_events(actor_id);\ncreate index if not exists {prefix}admin_target on public.{prefix}admin_events(target_id);")
 parts.append("create index if not exists group_node_votes_date on public.group_node_votes(meetup_id,date_id);")
+# Paginate candidate IDs before rendering participants and votes.
+group=(root/'supabase/migrations/20261026124241_group_node.sql').read_text()
+request=group[group.index('create function group_node_private.request'):group.index('create function public.group_node_api')]
+request=request.replace('create function group_node_private.request','create or replace function group_node_private.request',1)
+a=request.index("  select coalesce(jsonb_agg(x.item")
+b=request.index(" end if;",a)
+old=request[a:b]
+where=old[old.index('   where '):old.index('  ) x;')]
+new="""  with filtered as materialized (
+   select item.id,item.created_at from public.group_node_meetups item
+"""+where+"""  )
+  select coalesce((select jsonb_agg(group_node_private.render(page.id) order by page.created_at desc,page.id)
+   from (select id,created_at from filtered order by created_at desc,id
+    offset greatest(0,coalesce((p_payload->>'offset')::int,0)) limit 20) page),'[]'::jsonb),
+   (select count(*) from filtered) into all_rows,total;
+  return jsonb_build_object('meetups',all_rows,'total',total,'now',clock_timestamp());
+"""
+request=request[:a]+new+request[b:]
+parts.append(request)
+parts.append('revoke all on function group_node_private.request(text,text,text,jsonb) from public,anon,authenticated;')
 parts.append("notify pgrst, 'reload schema';\ncommit;\n")
 text='\n'.join(parts)
 (root/'supabase/continuous-operation.sql').write_text(text)
