@@ -107,7 +107,7 @@ create table if not exists public.tmt_lunch_roster (
  )
 );
 do $$ begin
- if exists(select 1 from public.tmt_lunch_users where name not in ('권도영','김서영','손규영','김민국','김상규','안소이','유태상','최철원','김주연','박서연','박진홍','양우진','장은영','김영탁','부유경','서유빈','오성현','김범준','박대원','박진영')) then
+ if exists(select 1 from public.tmt_lunch_users where name not in ('김수연','김현준','이예현','이준섭','전성훈','정준원','김나경','박주혜','어제웅','이승주','이희무','조서윤','박진형','설제은','오유진','이신후','채수진','최한용')) then
    raise exception 'Existing accounts outside the approved roster: review before applying this migration';
  end if;
 end; $$;

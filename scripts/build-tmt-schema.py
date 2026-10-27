@@ -7,6 +7,7 @@ assert len(rows)==18 and len(set(n for n,t in rows))==18
 text=(root/'supabase/ax-schema.sql').read_text().replace('ax_lunch_','tmt_lunch_')
 checks=' or\n    '.join(f"(name='{name}' and class_name='{team}' and default_status='unset')" for name,team in rows)
 text=re.sub(r"constraint tmt_lunch_roster_allowed check \(.*?\n \)", 'constraint tmt_lunch_roster_allowed check (\n    '+checks+'\n )',text,flags=re.S)
+text=re.sub(r"name not in \([^)]*\)", "name not in ("+','.join("'"+name+"'" for name,team in rows)+')',text)
 seeds=',\n'.join(f"('20000000-0000-4000-8000-{i:012d}'::uuid,'{name}','{team}','unset')" for i,(name,team) in enumerate(rows,1))
 text=re.sub(r"from \(values\n.*?\) as seed\(id,name,class_name,default_status\)", 'from (values\n'+seeds+') as seed(id,name,class_name,default_status)',text,flags=re.S)
 text=text.replace('-- Fixed roster: 8 in class 4, 9 in class 5, 3 December hires.','-- Fixed TMT roster: 8 Tech and 10 ICT, all initially unset.')
@@ -29,3 +30,9 @@ actor=actor.replace("from public.global_lunch_roster) r", "from public.global_lu
 constraints='\n'.join(f"alter table public.{table} drop constraint {constraint};\nalter table public.{table} add constraint {constraint} check({column} in ('ax','global','tmt'));" for table,constraint,column in [
  ('group_node_meetups','group_node_meetups_created_by_tenant_check','created_by_tenant'),('group_node_participants','group_node_participants_tenant_check','tenant'),('group_node_comments','group_node_comments_tenant_check','tenant')])
 (root/'supabase/tmt-group-node.sql').write_text("begin;\n"+constraints+'\n'+actor+"\nrevoke all on function group_node_private.actor(text,text),group_node_private.person(text,uuid) from public,anon,authenticated,service_role;\nnotify pgrst, 'reload schema';\ncommit;\n")
+
+# Preserve the CLI-generated migration version while checking its generated body.
+for migration in (root/'supabase/migrations').glob('*_tmt_headquarters.sql'):
+ bodies=[(root/'supabase'/name).read_text() for name in ['tmt-schema.sql','tmt-group-node.sql']]
+ body='\n'.join(re.sub(r'(?m)^(begin;|commit;)\s*$','',part) for part in bodies)
+ migration.write_text('begin;\n'+body+'\ncommit;\n')

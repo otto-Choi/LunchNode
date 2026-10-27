@@ -33,11 +33,6 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci --no-audit --no-fund
-      - name: Generate TMT migration name
-        if: github.ref == 'refs/heads/tmt-headquarters'
-        run: |
-          npx --yes supabase@2.81.3 migration new --help
-          npx --yes supabase@2.81.3 migration new tmt_headquarters
       - run: npm audit --omit=dev --audit-level=high
       - name: Check generated SQL and cutover guide
         run: |
