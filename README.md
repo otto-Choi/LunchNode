@@ -2,7 +2,7 @@
 
 모바일과 PC에서 점심 신청·조 편성과 동기 소모임을 함께 이용하는 Next.js 앱입니다.
 
-[Group Node 기능·구조·DB 설치·QA](docs/GROUP_NODE.md)를 참고하세요. 기존 Lunch Node는 주황색, Group Node는 하늘색으로 구분하며 같은 계정으로 전환합니다.
+[Group Node 기능·구조·DB 설치·QA](docs/GROUP_NODE.md)와 [1회성 모임·소모임 구분](docs/PERSISTENT_CLUBS.md)을 참고하세요. 기존 Lunch Node는 주황색, Group Node는 하늘색으로 구분하며 같은 계정으로 전환합니다.
 
 - 서비스: https://lunch-node.vercel.app/
 - 본부: **AX Node**, **Global**, **TMT**. 본부 선택 → 초대 코드 확인 → 이름 선택 → 숫자 6자리 PIN으로 등록·로그인합니다.
@@ -71,6 +71,7 @@ Vercel의 Root Directory는 저장소 루트, Framework Preset은 Next.js로 설
 | `supabase/migrations/20261026124241_group_node.sql` | AX·Global 설치 후 Group Node 추가 |
 | `supabase/migrations/20261027141019_tmt_headquarters.sql` | TMT 18명과 Group Node 본부 연동 추가 |
 | `supabase/migrations/20261027143019_continuous_operation.sql` | AX·Global·TMT 종료일 제거 및 연속 운영 적용 |
+| `supabase/migrations/20261027144612_persistent_clubs.sql` | 지속형 소모임·기존 모임 전환·모임장 참여자 추가 |
 | `supabase/schema.sql` | 비어 있는 프로젝트에 AX·Global 신규 설치 |
 | `supabase/global-schema.sql` | AX만 있는 기존 프로젝트에 Global 추가 |
 | `supabase/upgrade-shared-db.sql` | 기존 `lunch_*` 구조에서 AX 이름 변경 및 Global 추가. 재실행 지원 |
@@ -120,5 +121,5 @@ DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/lunch_test ALLOW_DATABA
 
 연속 운영 설정은 [docs/CONTINUOUS_OPERATION.md](docs/CONTINUOUS_OPERATION.md), 전체 코드 리뷰와 QA 범위는 [docs/CODE_REVIEW_QA.md](docs/CODE_REVIEW_QA.md)를 참고하세요.
 
-비어 있는 DB 신규 설치 순서는 `schema.sql` → Group Node → TMT → 연속 운영입니다.
+비어 있는 DB 신규 설치 순서는 `schema.sql` → Group Node → TMT → 연속 운영 → 지속형 소모임입니다.
 현재 운영 DB에는 적용된 마이그레이션을 다시 실행하지 않습니다.

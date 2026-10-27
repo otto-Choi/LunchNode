@@ -21,3 +21,19 @@ test('group API blocks missing sessions, cross-origin writes and malformed actio
  await assert.rejects(groupNodeRequest(req({action:'create',...input}),opts),e=>e.status===403);assert.equal(writes,0);
  const valid=req({action:'delete',id});valid.headers.set('origin','https://test');await assert.rejects(groupNodeRequest(valid,opts),e=>e.status===400);assert.equal(writes,0);
 });
+
+test('clubs accept optional dates while one-off meetups still require dates',async()=>{
+ const {meetupInput}=await ready;assert.deepEqual(meetupInput({...input,kind:'club',dates:[]}),{...input,kind:'club',dates:[]});
+ for(const kind of ['other',null,['club'],{}])assert.throws(()=>meetupInput({...input,kind}));
+ assert.throws(()=>meetupInput({...input,kind:'one_off',dates:[]}));
+});
+test('club filters and owner member actions carry validated targets and versions',async()=>{
+ const {groupNodeRequest}=await ready;const calls=[];const opts={rpc:async(name,args)=>{calls.push(args);return {};},limit:async()=>true,tenant:'ax',cookieName:'ax_lunch_session',origin:'https://test'};
+ const headers={origin:'https://test','content-type':'application/json',cookie:'ax_lunch_session='+'a'.repeat(64)};
+ await groupNodeRequest(new Request('https://test/api/group-node?view=clubs',{headers}),opts);assert.equal(calls.at(-1).p_payload.view,'clubs');
+ await groupNodeRequest(new Request('https://test/api/group-node?participantsFor='+id,{headers}),opts);assert.equal(calls.at(-1).p_action,'participant_roster');
+ const req=body=>new Request('https://test/api/group-node',{method:'POST',headers,body:JSON.stringify(body)});
+ await assert.rejects(groupNodeRequest(req({action:'convert_to_club',id}),opts),e=>e.status===400);
+ await assert.rejects(groupNodeRequest(req({action:'add_participant',id,version:0,tenant:'wrong',userId:id}),opts),e=>e.status===400);
+ await groupNodeRequest(req({action:'add_participant',id,version:2,tenant:'tmt',userId:id}),opts);assert.deepEqual(calls.at(-1).p_payload,{id,version:2,tenant:'tmt',userId:id});
+});
