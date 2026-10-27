@@ -48,18 +48,28 @@ export function weekdays(start: string, end: string) {
   return result;
 }
 const shuffle = <T,>(items:T[], random:()=>number) => { const a=[...items];for(let i=a.length-1;i>0;i--){const j=Math.floor(random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a; };
+export const MAX_GROUP_SIZE=4;
 function sizes(n:number):number[] {
-  if(n===0)return [];if(n<=5)return [n];
-  const possibilities = [3,4,5].filter(x=>n-x>=3).map(x=>[x,...sizes(n-x)]);
-  return possibilities.sort((a,b)=>compareCost([a.filter(x=>x===5).length,a.filter(x=>x===3).length],[b.filter(x=>x===5).length,b.filter(x=>x===3).length]))[0];
+ const plans:number[][]=[[]];
+ const score=(plan:number[])=>[plan.reduce((v,n)=>v+Math.max(0,3-n),0),plan.filter(n=>n===3).length];
+ for(let total=1;total<=n;total++){
+  const options=Array.from({length:Math.min(MAX_GROUP_SIZE,total)},(_,i)=>[i+1,...plans[total-i-1]]);
+  plans[total]=options.sort((a,b)=>compareCost(score(a),score(b)))[0];
+ }
+ return plans[n];
+}
+// Keep mandatory-menu participants together and avoid opposite soft preferences
+// inside those groups before comparing group sizes, encounter history or balance.
+function menuStructure(members:Person[],meal:MealType,choice:(person:Person)=>Meal) {
+ const strict=members.filter(p=>choice(p)===meal).length;
+ const opposite=members.filter(p=>choice(p)===(meal==='lunchbox'?'prefer_outside':'prefer_lunchbox')).length;
+ return {cohesion:strict?MAX_GROUP_SIZE-strict:0,opposite:strict*opposite};
 }
 export function encounters(state:State, date:string, a:string, b:string) {
   return Object.entries(state.days).filter(([d,v])=>d<date&&v.phase==='final').reduce((n,[,v])=>n+Number(v.groups.some(g=>g.members.some(p=>p.id===a)&&g.members.some(p=>p.id===b))),0);
 }
-// Lexicographic cost: avoid tiny groups, minimize five-person groups, maximize
-// four-person groups, then recent/cumulative encounters, composition, cohort balance,
-// and soft menu mismatches. BigInt keeps
-// every historical date significant without floating-point weight loss.
+// Mandatory menu cohesion and opposite-preference avoidance precede size,
+// historical encounters, composition, cohort balance and soft menu mismatches.
 function matchingCosts(state:State,date:string,people:Person[],policy?:MatchingPolicy) {
   const history=Object.entries(state.days).filter(([d,v])=>d<date&&v.phase==='final').sort(([a],[b])=>a.localeCompare(b));
   const index=new Map(people.map((p,i)=>[p.id,i]));
@@ -89,9 +99,10 @@ function matchingCosts(state:State,date:string,people:Person[],policy?:MatchingP
     return BigInt([...counts.values()].reduce((n,count)=>n+count*(count-1)/2,0));
   };
   const threeUnit=recencyUnit*base**BigInt(history.length+1);
-  const fiveUnit=threeUnit*BigInt(people.length+1);
-  const smallUnit=fiveUnit*BigInt(people.length+1);
-  return {pairs,index,smallUnit,preferenceUnit,fiveUnit,threeUnit,balanceUnit,balanceCost,classUnit,classCost};
+  const smallUnit=threeUnit*BigInt(people.length+1);
+  const oppositeUnit=smallUnit*BigInt(3*people.length+1);
+  const strictUnit=oppositeUnit*base;
+  return {pairs,index,smallUnit,preferenceUnit,threeUnit,balanceUnit,balanceCost,classUnit,classCost,oppositeUnit,strictUnit};
 }
 export function initialMatch(state:State,date:string,people:Person[],random=Math.random,policy?:MatchingPolicy):Group[] {
   const choices=state.choices[date]??{};
@@ -99,7 +110,8 @@ export function initialMatch(state:State,date:string,people:Person[],random=Math
   if(!joined.length)return [];
   const weights=matchingCosts(state,date,joined,policy);
   const evaluate=(members:Person[],meal:MealType)=>{
-    let cost=BigInt(Math.max(0,3-members.length))*weights.smallUnit+(members.length===5?weights.fiveUnit:members.length===3?weights.threeUnit:0n);
+    const menu=menuStructure(members,meal,p=>choices[p.id].meal);
+    let cost=BigInt(menu.cohesion)*weights.strictUnit+BigInt(menu.opposite)*weights.oppositeUnit+BigInt(Math.max(0,3-members.length))*weights.smallUnit+(members.length===3?weights.threeUnit:0n);
     cost+=weights.balanceCost(members)*weights.balanceUnit+weights.classCost(members)*weights.classUnit;
     for(let i=0;i<members.length;i++){
       cost+=BigInt(preferenceCost(choices[members[i].id].meal,meal))*weights.preferenceUnit;
@@ -109,8 +121,19 @@ export function initialMatch(state:State,date:string,people:Person[],random=Math
   };
   const build=(pool:Record<MealType,Person[]>)=>{
     const groups:Group[]=[];
-    for(const meal of ['lunchbox','outside'] as const){let offset=0;const members=shuffle(pool[meal],random);
-      for(const size of sizes(members.length)){groups.push({id:'',meal,members:members.slice(offset,offset+size)});offset+=size;}}
+    for(const meal of ['lunchbox','outside'] as const){
+      const strict=shuffle(pool[meal].filter(p=>choices[p.id].meal===meal),random);
+      let flexible=shuffle(pool[meal].filter(p=>choices[p.id].meal!==meal),random),offset=0;
+      for(const size of sizes(strict.length)){
+        const members=strict.slice(offset,offset+size);offset+=size;
+        while(members.length<MAX_GROUP_SIZE){
+          const next=flexible.findIndex(p=>choices[p.id].meal!==(meal==='lunchbox'?'prefer_outside':'prefer_lunchbox'));
+          if(next<0)break;members.push(flexible[next]);flexible.splice(next,1);
+        }
+        groups.push({id:'',meal,members});
+      }
+      offset=0;for(const size of sizes(flexible.length)){groups.push({id:'',meal,members:flexible.slice(offset,offset+size)});offset+=size;}
+    }
     return groups;
   };
   const strictBox=joined.filter(p=>choices[p.id].meal==='lunchbox'),strictOut=joined.filter(p=>choices[p.id].meal==='outside');
@@ -141,7 +164,7 @@ export function initialMatch(state:State,date:string,people:Person[],random=Math
         const candidate={mask,group:{id:'',meal,members},cost:evaluate(members,meal)};
         for(const i of indices)byPerson[i].push(candidate);
       }
-      if(indices.length===5)return;
+      if(indices.length===MAX_GROUP_SIZE)return;
       for(let i=start;i<joined.length;i++){
         const nextBox=box&&allowsMeal(choices[joined[i].id].meal,'lunchbox');
         const nextOut=out&&allowsMeal(choices[joined[i].id].meal,'outside');
@@ -173,22 +196,25 @@ export function addMember(state:State,date:string,person:Person,meal:Meal,random
   const day=state.days[date];if(day.groups.some(g=>g.members.some(p=>p.id===person.id)))return;
   const people=[person,...day.groups.flatMap(g=>g.members)];
   const weights=matchingCosts(state,date,people,policy);
-  const compatible=day.groups.filter(g=>g.members.length<5&&allowsMeal(meal,g.meal));
-  // Preserve existing assignments while avoiding a fifth member whenever a smaller compatible group exists.
-  const belowFour=compatible.filter(g=>g.members.length<4);
-  const candidates=shuffle(belowFour.length?belowFour:compatible,random);
-  // Compare the change in total imbalance, rather than the resulting group alone.
-  const cost=(g:Group)=>g.members.reduce((n,p)=>n+weights.pairs[0][weights.index.get(p.id)!],0n)+(weights.balanceCost([...g.members,person])-weights.balanceCost(g.members))*weights.balanceUnit+(weights.classCost([...g.members,person])-weights.classCost(g.members))*weights.classUnit;
-  candidates.sort((a,b)=>{
-    const ca=cost(a),cb=cost(b);if(ca!==cb)return ca<cb?-1:1;
-    return compareCost([a.members.length<3?0:1,preferenceCost(meal,a.meal),a.members.length],[b.members.length<3?0:1,preferenceCost(meal,b.meal),b.members.length]);
-  });
-  if(candidates[0])candidates[0].members.push({...person});
-  else {
-    const total=(actual:MealType)=>day.groups.filter(g=>g.meal===actual).reduce((n,g)=>n+g.members.length,0);
-    const actual=preferredMeal(meal)??(total('lunchbox')<=total('outside')?'lunchbox':'outside');
-    day.groups.push({id:`${date}-${crypto.randomUUID()}`,meal:actual,members:[{...person}]});
-  }
+  const choice=(p:Person)=>p.id===person.id?meal:state.choices[date]?.[p.id]?.meal||'any';
+  const cost=(members:Person[],actual:MealType)=>{
+    const menu=menuStructure(members,actual,choice);
+    let value=BigInt(menu.cohesion)*weights.strictUnit+BigInt(menu.opposite)*weights.oppositeUnit;
+    value+=BigInt(Math.max(0,3-members.length))*weights.smallUnit+(members.length===3?weights.threeUnit:0n);
+    value+=weights.balanceCost(members)*weights.balanceUnit+weights.classCost(members)*weights.classUnit;
+    for(let i=0;i<members.length;i++){
+      value+=BigInt(preferenceCost(choice(members[i]),actual))*weights.preferenceUnit;
+      for(let j=i+1;j<members.length;j++)value+=weights.pairs[weights.index.get(members[i].id)!][weights.index.get(members[j].id)!];
+    }
+    return value;
+  };
+  const candidates:{group:Group|undefined;actual:MealType;cost:bigint}[]=shuffle(day.groups.filter(g=>g.members.length<MAX_GROUP_SIZE&&allowsMeal(meal,g.meal)),random).map(group=>({group,actual:group.meal,cost:cost([...group.members,person],group.meal)-cost(group.members,group.meal)}));
+  for(const actual of ['lunchbox','outside'] as const)if(allowsMeal(meal,actual))candidates.push({group:undefined as Group|undefined,actual,cost:cost([person],actual)});
+  candidates.sort((a,b)=>a.cost<b.cost?-1:a.cost>b.cost?1:0);
+  const winner=candidates[0];
+  if(winner.group)winner.group.members.push({...person});
+  else day.groups.push({id:`${date}-${crypto.randomUUID()}`,meal:winner.actual,members:[{...person}]});
+
 }
 // Replaces an unfinalized assignment in place. Discarded groups never enter history.
 export function rematchDay(state:State,date:string,people:Person[],now=new Date(),random=Math.random,policy?:MatchingPolicy) {
@@ -203,6 +229,9 @@ export function syncDue(state:State,dates:string[],people:Person[],now=new Date(
   applyDefaults(state,pending,people);
   for(const date of pending){if(now<matchTime(date))continue;
     if(!state.days[date])state.days[date]={groups:initialMatch(state,date,people,random,policy),phase:'matched',matchedAt:now.toISOString()};
+    if(state.days[date].phase!=='final'&&now<cutoff(date)&&state.days[date].groups.some(g=>g.members.length>MAX_GROUP_SIZE||menuStructure(g.members,g.meal,p=>state.choices[date]?.[p.id]?.meal||'any').opposite>0)){
+      state.days[date]={...state.days[date],groups:initialMatch(state,date,people,random,policy),rematchedAt:now.toISOString()};
+    }
     if(state.days[date].phase!=='final'){
       const assigned=new Set(state.days[date].groups.flatMap(g=>g.members.map(p=>p.id)));
       for(const person of people)if(state.choices[date]?.[person.id]?.status==='join'&&!assigned.has(person.id)){

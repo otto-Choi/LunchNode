@@ -38,7 +38,7 @@ test('20-person rotation avoids consecutive repeats across nine operating days',
  for(const date of d.weekdays('2026-10-22','2026-11-03')){
   state.choices[date]=Object.fromEntries(ROSTER.map(p=>[p.id,{status:'join',meal:'any'}]));
   const groups=d.initialMatch(state,date,ROSTER,rand);assert.equal(repeats(groups,previous),0,date);
-  assert.equal(new Set(groups.flatMap(g=>g.members.map(p=>p.id))).size,20);assert.ok(groups.every(g=>g.members.length>=3&&g.members.length<=5));
+  assert.equal(new Set(groups.flatMap(g=>g.members.map(p=>p.id))).size,20);assert.ok(groups.every(g=>g.members.length>=3&&g.members.length<=4));
   state.days[date]=day(groups);previous=groups;
  }
 });

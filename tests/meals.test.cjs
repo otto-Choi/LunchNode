@@ -15,9 +15,9 @@ test('initial matching honors soft preferences when both groups can be formed',a
  const groups=f.d.initialMatch(f.state,f.date,f.people,f.random);assert.deepEqual(groups.map(g=>g.members.length),[3,3]);
  for(let i=0;i<f.people.length;i++)assert.equal(assignment(groups,f.people[i].id),i<3?'lunchbox':'outside');
 });
-test('soft preferences may move to resolve a small group, strict preferences never do',async()=>{
+test('opposite soft preferences stay outside strict groups even when it leaves a small group',async()=>{
  for(const [preferred,strict,actual]of [['prefer_lunchbox','outside','outside'],['prefer_outside','lunchbox','lunchbox']]){
-  const f=await fixture([preferred,preferred,strict,strict,strict]);const groups=f.d.initialMatch(f.state,f.date,f.people,f.random);assert.equal(groups.length,1);assert.equal(groups[0].meal,actual);assert.equal(groups[0].members.length,5);
+  const f=await fixture([preferred,preferred,strict,strict,strict]);const groups=f.d.initialMatch(f.state,f.date,f.people,f.random);assert.equal(groups.length,2);assert.ok(groups.every(g=>g.members.length<=4));assert.equal(assignment(groups,f.people[2].id),actual);assert.notEqual(assignment(groups,f.people[0].id),actual);
  }
  const f=await fixture(['lunchbox','lunchbox','outside','outside','outside']);const groups=f.d.initialMatch(f.state,f.date,f.people,f.random);assert.equal(groups.length,2);assert.equal(assignment(groups,f.people[0].id),'lunchbox');assert.equal(assignment(groups,f.people[2].id),'outside');
 });
@@ -31,7 +31,7 @@ test('mixed matching preserves every participant and every strict restriction',a
  for(let seed=0;seed<25;seed++){
   const meals=Array.from({length:20},(_,i)=>d.MEAL_OPTIONS[(i*7+seed)%5]);const f=await fixture(meals);const groups=d.initialMatch(f.state,f.date,f.people,f.random);
   assert.equal(new Set(groups.flatMap(g=>g.members.map(p=>p.id))).size,20);
-  for(const g of groups){assert.ok(['lunchbox','outside'].includes(g.meal));assert.ok(g.members.length<=5);for(const p of g.members)assert.ok(d.allowsMeal(f.state.choices[f.date][p.id].meal,g.meal));}
+  for(const g of groups){assert.ok(['lunchbox','outside'].includes(g.meal));assert.ok(g.members.length<=4);for(const p of g.members)assert.ok(d.allowsMeal(f.state.choices[f.date][p.id].meal,g.meal));}
  }
 });
 test('late joining prefers a compatible mode, falls back when full, and never relocates others',async()=>{
