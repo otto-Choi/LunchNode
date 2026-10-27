@@ -44,6 +44,8 @@ npm run build
 | `tests/browser/` | PC·모바일 브라우저 QA |
 | `docs/` | 코드리뷰와 QA 범위 기록 |
 
+관리자 계정과 권한 범위는 [관리자 계정 안내](docs/ADMINISTRATOR_ACCOUNTS.md)를 참고하세요.
+
 ## 운영 설정
 
 환경변수 목록은 [.env.example](.env.example)을 기준으로 합니다. 비밀값은 Git에 저장하지 않습니다. `SUPABASE_SERVICE_ROLE_KEY`, 초대 코드와 운영자 키를 `NEXT_PUBLIC_*` 변수로 만들면 안 됩니다.
@@ -72,6 +74,7 @@ Vercel의 Root Directory는 저장소 루트, Framework Preset은 Next.js로 설
 | `supabase/migrations/20261027141019_tmt_headquarters.sql` | TMT 18명과 Group Node 본부 연동 추가 |
 | `supabase/migrations/20261027143019_continuous_operation.sql` | AX·Global·TMT 종료일 제거 및 연속 운영 적용 |
 | `supabase/migrations/20261027144612_persistent_clubs.sql` | 지속형 소모임·기존 모임 전환·모임장 참여자 추가 |
+| `supabase/migrations/20261027151113_headquarters_administrators.sql` | 본부별 관리자 계정·통합 모임 관리 권한 |
 | `supabase/schema.sql` | 비어 있는 프로젝트에 AX·Global 신규 설치 |
 | `supabase/global-schema.sql` | AX만 있는 기존 프로젝트에 Global 추가 |
 | `supabase/upgrade-shared-db.sql` | 기존 `lunch_*` 구조에서 AX 이름 변경 및 Global 추가. 재실행 지원 |
@@ -121,5 +124,5 @@ DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/lunch_test ALLOW_DATABA
 
 연속 운영 설정은 [docs/CONTINUOUS_OPERATION.md](docs/CONTINUOUS_OPERATION.md), 전체 코드 리뷰와 QA 범위는 [docs/CODE_REVIEW_QA.md](docs/CODE_REVIEW_QA.md)를 참고하세요.
 
-비어 있는 DB 신규 설치 순서는 `schema.sql` → Group Node → TMT → 연속 운영 → 지속형 소모임입니다.
+비어 있는 DB 신규 설치 순서는 `schema.sql` → Group Node → TMT → 연속 운영 → 지속형 소모임 → 관리자 계정입니다.
 현재 운영 DB에는 적용된 마이그레이션을 다시 실행하지 않습니다.
