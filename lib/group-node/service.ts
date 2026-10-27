@@ -24,7 +24,7 @@ export function meetupInput(body:Record<string,unknown>):MeetupInput {
 export async function groupNodeRequest(request:Request,options:{rpc:Rpc;tenant:HeadquartersId;cookieName:string;origin?:string;limit:Rpc}) {
  if(!['GET','POST'].includes(request.method))throw new ApiError(405,'METHOD','허용되지 않은 요청입니다.');
  const token=tokenFrom(request,options.cookieName);if(!token)throw new ApiError(401,'AUTH','로그인이 필요합니다.');
- const hash=digest(options.tenant==='global'?`global:${token}`:token);
+ const hash=digest(options.tenant!=='ax'?`${options.tenant}:${token}`:token);
  let action='list',payload:Record<string,unknown>={};
  if(request.method==='GET'){
   const q=new URL(request.url).searchParams;action=q.has('id')?'detail':'list';

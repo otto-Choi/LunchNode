@@ -5,6 +5,6 @@ export type AxNamespace='legacy'|'ax';
 export function tenantRpc(rpc:Rpc,tenant:HeadquartersId,axNamespace:AxNamespace='ax'):Rpc {
  return <T>(name:string,args:Record<string,unknown>):Promise<T>=>{
   if(!/^lunch_[a-z_]+$/.test(name))throw new Error('Invalid LunchNode RPC');
-  return rpc<T>(tenant==='global'?`global_${name}`:axNamespace==='ax'?`ax_${name}`:name,args);
+  return rpc<T>(tenant!=='ax'?`${tenant}_${name}`:axNamespace==='ax'?`ax_${name}`:name,args);
  };
 }

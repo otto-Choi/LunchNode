@@ -75,3 +75,22 @@ test('Global roster correction supports both the pre-SQL and corrected DB withou
  assert.ok(people.some(p=>p.name==='이은서'));assert.ok(!people.some(p=>p.name==='이윤서'));
  assert.equal((await f.call('state','global',undefined,cookie)).status,200);
 });
+
+
+test('TMT is listed as preparing and cannot touch any DB even with prefilled credentials',async()=>{
+ const f=await fixture();f.env.TMT_INVITE_CODE='TMT36';f.env.TMT_ADMIN_SECRET='tmt-operator-key-longer-than-32-characters';
+ const listing=await (await f.call('tenants','ax')).json();
+ assert.deepEqual(listing.headquarters.find(h=>h.id==='tmt'),{id:'tmt',label:'TMT',available:false});
+ for(const endpoint of ['auth','state','profile','admin','group-node']){
+  const response=await f.call(endpoint,'tmt',endpoint==='auth'?{action:'unlock',invite:'TMT36'}:undefined);
+  assert.equal(response.status,503);assert.equal((await response.json()).code,'PREPARING');
+ }
+ assert.equal(f.calls.length,0);
+ const {tenantConfig}=await import('../lib/backend/tenant-config.ts');
+ assert.deepEqual(tenantConfig('tmt').roster,[]);
+ assert.deepEqual(tenantConfig('tmt').policy.genderByName,{});
+ assert.equal(tenantConfig('tmt').policy.balanceClasses,true);
+ const {tenantRpc}=await import('../lib/backend/tenant-rpc.ts');let routed;
+ await tenantRpc(async name=>{routed=name;return null;},'tmt')('lunch_tenant_info',{});
+ assert.equal(routed,'tmt_lunch_tenant_info');
+});

@@ -8,8 +8,11 @@ import {ApiError,errorResponse,response,secretEqual} from './security.ts';
 type Env=Record<string,string|undefined>;
 type Endpoint='auth'|'state'|'profile'|'cron'|'health'|'admin'|'tenants'|'group-node';
 export function createApplication({env,rpcFactory=supabaseRpc}:{env:Env;rpcFactory?:(url:string,key:string)=>Rpc}){
- const config=(id:HeadquartersId)=>({url:env.SUPABASE_URL||env.AX_SUPABASE_URL,key:env.SUPABASE_SERVICE_ROLE_KEY||env.AX_SUPABASE_SERVICE_ROLE_KEY,...(id==='ax'?{invite:env.AX_INVITE_CODE||env.INVITE_CODE,admin:env.AX_ADMIN_SECRET||env.ADMIN_SECRET}:{invite:env.GLOBAL_INVITE_CODE,admin:env.GLOBAL_ADMIN_SECRET})});
- function validate(id:HeadquartersId){const c=config(id);if(!c.url||!c.key)throw new ApiError(503,'CONFIG','본부 DB 연결 설정이 필요합니다.');
+ const config=(id:HeadquartersId)=>({url:env.SUPABASE_URL||env.AX_SUPABASE_URL,key:env.SUPABASE_SERVICE_ROLE_KEY||env.AX_SUPABASE_SERVICE_ROLE_KEY,...(id==='ax'?{invite:env.AX_INVITE_CODE||env.INVITE_CODE,admin:env.AX_ADMIN_SECRET||env.ADMIN_SECRET}:id==='global'?{invite:env.GLOBAL_INVITE_CODE,admin:env.GLOBAL_ADMIN_SECRET}:{invite:env.TMT_INVITE_CODE,admin:env.TMT_ADMIN_SECRET})});
+ function validate(id:HeadquartersId){
+  // Provision the verified roster, isolated SQL and Group Node support before opening TMT.
+  if(id==='tmt')throw new ApiError(503,'PREPARING','TMT는 명단 등록을 준비 중입니다.');
+  const c=config(id);if(!c.url||!c.key)throw new ApiError(503,'CONFIG','본부 DB 연결 설정이 필요합니다.');
   if(id==='global'){
    const ax=config('ax');
    if(!c.invite||c.invite===ax.invite||!c.admin||c.admin.length<32||c.admin===ax.admin)throw new ApiError(503,'CONFIG','Global 전용 초대 코드와 별도의 32자 이상 운영자 키가 필요합니다.');
