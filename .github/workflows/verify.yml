@@ -33,11 +33,6 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci --no-audit --no-fund
-      - name: Generate persistent clubs migration name
-        if: github.head_ref == 'persistent-clubs'
-        run: |
-          npx --yes supabase@2.81.3 migration new --help
-          npx --yes supabase@2.81.3 migration new persistent_clubs
       - run: npm audit --omit=dev --audit-level=high
       - name: Check generated SQL and cutover guide
         run: |

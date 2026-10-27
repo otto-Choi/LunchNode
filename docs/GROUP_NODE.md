@@ -1,3 +1,5 @@
+> 최신 모임 유형·목록 분류·전환·참여자 추가는 [1회성 모임과 소모임](PERSISTENT_CLUBS.md)을 참고하세요.
+
 # Lunch Node + Group Node
 
 ## 서비스

@@ -28,3 +28,10 @@
 독립 설치 SQL `supabase/persistent-clubs.sql`은 `python scripts/build-persistent-clubs.py`로 생성합니다.
 `group_node_meetups.kind`만 추가하고 렌더링·목록·권한 RPC를 확장합니다. 기존 본부 Lunch 데이터는 변경하지 않습니다.
 단위·PostgreSQL·PC/모바일 테스트로 날짜 경과, 과거/미래 전환, 데이터 보존, 참여자 추가 및 본부 전용 권한을 검증합니다.
+
+## 반영 결과
+
+운영 DB 마이그레이션은 `20261027144612_persistent_clubs`입니다.
+단위 86개, PostgreSQL 통합 18개, PC/모바일 브라우저 36개 테스트 통과를 확인했습니다.
+운영 반영 전후 기존 모임·날짜·참여자·투표·댓글의 지문과 세 본부의 점심 계정 수·상태 지문이 동일합니다.
+기존 모임은 사용자 선택 없이 자동 전환하지 않습니다.
