@@ -9,6 +9,12 @@ test('TMT invitation opens only its canonical 18-person roster and registers a t
  await expect(select.locator('option')).toHaveCount(19);
  await select.selectOption(name);
  await page.getByLabel('숫자 6자리 PIN').fill('123456');
- await page.getByRole('button',{name:'등록',exact:true}).click();
+ const loaded=page.waitForResponse(r=>r.url().endsWith('/api/state')&&r.status()===200);
+ await page.getByRole('button',{name:'등록',exact:true}).click();const data=await (await loaded).json();
  await expect(page.getByText(name,{exact:true}).first()).toBeVisible();
+ const future=data.dates.find((d:string)=>new Date(data.now)<new Date(`${d}T11:00:00+09:00`));
+ const short=`${Number(future.slice(5,7))}월 ${Number(future.slice(8))}일`;
+ const write=page.waitForResponse(r=>r.url().endsWith('/api/state')&&r.request().method()==='POST');
+ await page.getByRole('button',{name:`${short} 참석`,exact:true}).click();expect((await write).status()).toBe(200);
+ await page.reload();await expect(page.locator('.date-cell.selected .status-label')).toHaveText('참석');
 });

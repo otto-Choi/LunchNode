@@ -330,6 +330,13 @@ test('TMT installer preserves existing HQs, enforces 18-person roster, and exten
  for(const p of TMT_ROSTER){const hash=digest('tmt:'+p.id);await db.rpc('tmt_lunch_register',{p_name:p.name,p_pin_hash:await hashPin('123456'),p_token_hash:hash});tokens.push(hash);}
  await assert.rejects(db.rpc('tmt_lunch_register',{p_name:'류지환',p_pin_hash:'x',p_token_hash:'x'}));
  assert.equal(await db.rpc('global_lunch_identity',{p_token_hash:tokens[0]}),null);
+ const {tenantConfig}=await import('../lib/backend/tenant-config.ts');
+ const tmtBackend=createBackend({rpc:(name,args)=>db.rpc('tmt_'+name,args),tenantId:'tmt',roster:TMT_ROSTER,policy:tenantConfig('tmt').policy,inviteCode:'TMT36',adminSecret:'ci-tmt-operator-key-at-least-32-characters',cronSecret:'ci',secureCookies:false,cookieStyle:'namespaced'});
+ const login=await tmtBackend.handle('auth',req('auth',{action:'login',name:'김수연',pin:'123456'}));assert.equal(login.status,200,await login.clone().text());
+ const cookie=login.headers.get('set-cookie').split(';')[0];
+ const joined=await tmtBackend.handle('state',req('state',{dates:[date],choice:{status:'join',meal:'prefer_outside'}},cookie));assert.equal(joined.status,200,await joined.clone().text());
+ const saved=await (await tmtBackend.handle('state',req('state',undefined,cookie))).json();assert.deepEqual(saved.state.choices[date][TMT_ROSTER[0].id],{status:'join',meal:'prefer_outside'});
+
  const group=(tenant,hash,action,payload={})=>db.rpc('group_node_api',{p_tenant:tenant,p_token_hash:hash,p_action:action,p_payload:payload});
  let m=await group('tmt',tokens[0],'create',{title:'TMT 교류',description:'',category:'food',visibility:'all',minPeople:2,dates:[{date,time:null}]});
  assert.equal(m.proposer.name,'김수연');assert.equal(m.proposer.className,'TMT Tech');
