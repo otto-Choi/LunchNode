@@ -151,7 +151,7 @@ test('operator rematch includes late participants, preserves choices and history
  for(const c of cookies.slice(0,3))await f.send('state',{dates:[date],choice:{status:'join',meal:'any'}},c);
  f.setNow('2026-10-21T22:00:00+09:00');await f.send('state',undefined,cookies[0]);
  for(const c of cookies.slice(3))await f.send('state',{dates:[date],choice:{status:'join',meal:'any'}},c);
- const before=f.getState();assert.deepEqual(before.days[date].groups.map(g=>g.members.length),[5,3]);
+ const before=f.getState();assert.deepEqual(before.days[date].groups.map(g=>g.members.length),[4,4]);
  assert.equal((await rematch({key:'bad'})).status,403);assert.equal((await rematch({},'')).status,401);
  assert.equal((await rematch()).status,200);let saved=f.getState();assert.deepEqual(saved.choices,before.choices);
  assert.deepEqual(saved.days[date].groups.map(g=>g.members.length),[4,4]);assert.equal(saved.days[date].phase,'matched');assert.ok(saved.days[date].rematchedAt);

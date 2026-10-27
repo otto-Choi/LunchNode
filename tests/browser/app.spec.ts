@@ -57,7 +57,7 @@ test('register, change attendance and menu, reload, and log out',async({page},in
  for(const d of openDates.slice(0,2))expect(saved.state.choices[d][payload.user.id].status).toBe('absent');
  expect(saved.state.choices[openDates[2]][payload.user.id]).toEqual(untouched);
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
- await navigateMenu(page,'이용 안내');await expect(page.getByRole('dialog')).toContainText('최근에 만난 사람과 다시 만나는 일을 가장 먼저 피합니다');await expect(page.getByRole('dialog')).toContainText('상관없음은 양쪽 모두 배정');await page.getByRole('button',{name:'닫기',exact:true}).click();
+ await navigateMenu(page,'이용 안내');await expect(page.getByRole('dialog')).toContainText('이 메뉴 구성 기준을 만남 이력보다 우선합니다');await expect(page.getByRole('dialog')).toContainText('상관없음은 양쪽 모두 배정');await expect(page.getByRole('dialog')).toContainText('도시락만 신청자로만 구성된 조는 최대 5명, 그 외 모든 조는 최대 4명');await page.getByRole('button',{name:'닫기',exact:true}).click();
  await page.locator('.profile-button').click();await page.getByRole('button',{name:'운영자 도구',exact:true}).click();
  await page.getByLabel('운영자 키',{exact:true}).fill('ci-operator-secret-at-least-32-chars');const adminCheck=page.waitForResponse(r=>r.url().endsWith('/api/admin'));await page.getByRole('button',{name:'운영자 인증',exact:true}).click();expect((await adminCheck).status()).toBe(200);await expect(page.getByLabel('작업',{exact:true})).toBeVisible();
  await page.getByLabel('작업',{exact:true}).selectOption('recover');await page.getByRole('button',{name:'실행',exact:true}).click();await expect(page.getByRole('dialog').getByRole('status')).toContainText('누락된 편성·마감 처리를 완료했습니다.');

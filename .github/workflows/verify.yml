@@ -41,6 +41,7 @@ jobs:
           python scripts/build-continuous-operation.py
           python scripts/build-persistent-clubs.py
           python scripts/build-headquarters-administrators.py
+          python scripts/build-four-person-matching.py
           python scripts/build-before-cutover.py
           git diff --exit-code -- supabase/ CUTOVER_GUIDE.md
       - run: npm run typecheck
