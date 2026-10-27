@@ -145,6 +145,8 @@ $$;
 -- Existing RPC grants stay unchanged; no new public endpoint.
 revoke all on function public.ax_lunch_snapshot(text,boolean),public.ax_lunch_commit_state(text,integer,jsonb,text[],boolean),public.ax_lunch_admin_rematch(text,integer,text,jsonb),public.ax_lunch_admin_initial_match(text,integer,text,jsonb) from public,anon,authenticated;
 
+create index if not exists ax_lunch_admin_actor on public.ax_lunch_admin_events(actor_id);
+create index if not exists ax_lunch_admin_target on public.ax_lunch_admin_events(target_id);
 alter table public.global_lunch_settings alter column end_date drop not null;
 alter table public.global_lunch_settings drop constraint if exists global_lunch_settings_check;
 alter table public.global_lunch_settings drop constraint if exists global_lunch_settings_period_check;
@@ -280,6 +282,8 @@ $$;
 -- Existing RPC grants stay unchanged; no new public endpoint.
 revoke all on function public.global_lunch_snapshot(text,boolean),public.global_lunch_commit_state(text,integer,jsonb,text[],boolean),public.global_lunch_admin_rematch(text,integer,text,jsonb),public.global_lunch_admin_initial_match(text,integer,text,jsonb) from public,anon,authenticated;
 
+create index if not exists global_lunch_admin_actor on public.global_lunch_admin_events(actor_id);
+create index if not exists global_lunch_admin_target on public.global_lunch_admin_events(target_id);
 alter table public.tmt_lunch_settings alter column end_date drop not null;
 alter table public.tmt_lunch_settings drop constraint if exists tmt_lunch_settings_check;
 alter table public.tmt_lunch_settings drop constraint if exists tmt_lunch_settings_period_check;
@@ -415,5 +419,8 @@ $$;
 -- Existing RPC grants stay unchanged; no new public endpoint.
 revoke all on function public.tmt_lunch_snapshot(text,boolean),public.tmt_lunch_commit_state(text,integer,jsonb,text[],boolean),public.tmt_lunch_admin_rematch(text,integer,text,jsonb),public.tmt_lunch_admin_initial_match(text,integer,text,jsonb) from public,anon,authenticated;
 
+create index if not exists tmt_lunch_admin_actor on public.tmt_lunch_admin_events(actor_id);
+create index if not exists tmt_lunch_admin_target on public.tmt_lunch_admin_events(target_id);
+create index if not exists group_node_votes_date on public.group_node_votes(meetup_id,date_id);
 notify pgrst, 'reload schema';
 commit;

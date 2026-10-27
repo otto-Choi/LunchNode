@@ -368,6 +368,12 @@ test('continuous operation preserves data and allows future weekdays beyond the 
   assert.equal((await db.rpc(tenant+'_lunch_snapshot',{p_token_hash:'',p_cron:true})).state.choices['2026-12-01'][roster.id].status,'join');
   const permissions=(await db.admin.query(`select has_function_privilege('anon','${tenant}_lunch_snapshot(text,boolean)','execute') as rpc,has_table_privilege('service_role','${tenant}_lunch_settings','select') as direct`)).rows[0];assert.deepEqual(permissions,{rpc:false,direct:false});
  }
+ const tmtSnapshot=await db.rpc('tmt_lunch_snapshot',{p_token_hash:'',p_cron:true});
+ const {TMT_ROSTER}=await import('../lib/backend/tmt-roster.ts');
+ await assert.rejects(db.rpc('tmt_lunch_admin_rematch',{p_actor_token:digest('tmt:'+TMT_ROSTER[0].id),p_expected_version:tmtSnapshot.version,p_date:'2026-12-01',p_groups:[]}),e=>e.code==='LN409');
+ await db.admin.query("update tmt_lunch_settings set end_date='2026-11-30'");
+ await assert.rejects(db.rpc('tmt_lunch_commit_state',{p_token_hash:'',p_expected_version:tmtSnapshot.version,p_data:tmtSnapshot.state,p_write_dates:['2026-12-01'],p_cron:true}),e=>e.code==='LN400');
+ await db.admin.query('update tmt_lunch_settings set end_date=null');
  const {rows:[{dates}]}=await db.admin.query("select lunch_operation_private.calendar_dates('2026-10-22',null,'2026-12-31T23:59:00+09:00') as dates");
  assert.ok(dates.includes('2027-01-01'));assert.equal(dates.at(-1),'2027-02-26');assert.ok(!dates.includes('2027-03-01'));
  const leap=(await db.admin.query("select lunch_operation_private.calendar_dates('2028-02-01',null,'2028-02-29T12:00:00+09:00') as dates")).rows[0].dates;assert.ok(leap.includes('2028-02-29'));assert.equal(leap.at(-1),'2028-04-28');

@@ -7,7 +7,7 @@
 - 서비스: https://lunch-node.vercel.app/
 - 본부: **AX Node**, **Global**. 본부 선택 → 초대 코드 확인 → 이름 선택 → 숫자 6자리 PIN으로 등록·로그인합니다.
 - 하나의 Supabase 프로젝트 안에서 `ax_lunch_*`와 `global_lunch_*` 테이블·RPC·세션·초대 코드·운영자 키를 분리합니다.
-- 운영 기간은 각 본부의 DB 설정을 따릅니다. 현재 종료일은 **2026-11-30**, 운영일은 평일입니다. 모든 운영 시각은 **한국 시간**입니다.
+- 운영 기간은 각 본부의 DB 설정을 따릅니다. AX Node·Global·TMT 모두 **종료일 없이** 운영하며 운영일은 평일입니다. 이번 달과 다음 두 달의 신청 일정이 자동으로 열립니다. 모든 운영 시각은 **한국 시간**입니다.
 
 ## 개발
 
@@ -114,3 +114,5 @@ DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/lunch_test ALLOW_DATABA
 브라우저 테스트는 포트 3000과 54329를 사용합니다. Chrome이 없다면 `npx playwright install chromium`으로 설치하고 `PLAYWRIGHT_CHANNEL`을 생략합니다. 모바일 테스트는 iPhone 크기의 Chromium 에뮬레이션이며 실제 Safari 기기 검증을 대체하지 않습니다.
 
 [코드리뷰·QA 기록](docs/REVIEW_QA.md)
+
+연속 운영 설정은 [docs/CONTINUOUS_OPERATION.md](docs/CONTINUOUS_OPERATION.md), 전체 코드 리뷰와 QA 범위는 [docs/CODE_REVIEW_QA.md](docs/CODE_REVIEW_QA.md)를 참고하세요.

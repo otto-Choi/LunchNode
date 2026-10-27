@@ -40,6 +40,8 @@ update public.{prefix}settings set end_date=null where id=1;
  parts.append(f"""-- Existing RPC grants stay unchanged; no new public endpoint.
 revoke all on function public.{prefix}snapshot(text,boolean),public.{prefix}commit_state(text,integer,jsonb,text[],boolean),public.{prefix}admin_rematch(text,integer,text,jsonb),public.{prefix}admin_initial_match(text,integer,text,jsonb) from public,anon,authenticated;
 """)
+ parts.append(f"create index if not exists {prefix}admin_actor on public.{prefix}admin_events(actor_id);\ncreate index if not exists {prefix}admin_target on public.{prefix}admin_events(target_id);")
+parts.append("create index if not exists group_node_votes_date on public.group_node_votes(meetup_id,date_id);")
 parts.append("notify pgrst, 'reload schema';\ncommit;\n")
 text='\n'.join(parts)
 (root/'supabase/continuous-operation.sql').write_text(text)

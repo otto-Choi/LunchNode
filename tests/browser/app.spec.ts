@@ -33,7 +33,7 @@ test('register, change attendance and menu, reload, and log out',async({page},in
  await page.getByRole('button',{name:'여러 날짜 참석/불참',exact:true}).click();
  await expect(page.getByRole('button',{name:'참석으로 저장',exact:true})).toBeDisabled();
  const closedDate=payload.dates.find((d:string)=>new Date(payload.now)>=new Date(`${d}T11:00:00+09:00`));
- if(closedDate)await expect(page.locator(`.date-hit-target[aria-label="${title(closedDate)} 선택"]`)).toBeDisabled();
+ if(closedDate){const button=page.locator(`.date-hit-target[aria-label="${title(closedDate)} 선택"]`);const today=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Seoul',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(payload.now));if(info.project.name==='mobile'&&closedDate<today)await expect(button).toHaveCount(0);else await expect(button).toBeDisabled();}
  await blankArea(openDates[0]);await expect(page.locator('.date-cell.picked')).toHaveCount(1);
  await dateButton(openDates[0]).click();await expect(page.locator('.date-cell.picked')).toHaveCount(0);
  await blankArea(openDates[0]);await dateButton(openDates[1]).focus();await page.keyboard.press('Space');
