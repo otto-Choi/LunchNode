@@ -43,3 +43,20 @@ Supabase가 안내한 감사 이력 6개와 날짜별 투표 1개 외래키의 �
 모임의 확정 날짜 외래키 `(id, confirmed_date_id)`는 기본키 `id` 조회로 후보가 이미 최대 한 행이므로 중복 복합 인덱스를 추가하지 않습니다.
 [미색인 외래키 진단 기준](https://supabase.com/docs/guides/database/database-linter?lint=0001_unindexed_foreign_keys)을 참고했습니다.
 사용량이 적어 아직 사용되지 않은 세션 인덱스는 PIN 변경·세션 취소 시 필요하므로 삭제하지 않습니다.
+
+실서비스 런타임 로그는 현재 Vercel 연결의 읽기 권한 제한으로 확인할 수 없습니다.
+배포 상태와 공개 API 응답을 별도로 확인하고, 기능·동시성 QA는 테스트 서버와 PostgreSQL에서 검증합니다.
+
+## 최종 검증 결과
+
+- 단위 테스트 84개, 실제 PostgreSQL 통합 테스트 17개, PC/모바일 브라우저 테스트 34개 통과.
+- 생성 SQL 일치, TypeScript, 프로덕션 빌드, 운영 의존성 보안 검사 통과.
+- 운영 DB 마이그레이션 `20261027143019_continuous_operation` 적용 전후 세 본부의 계정 수와 신청 상태 버전·지문 동일.
+- 기존 소모임 2개, 참여 9개, 투표 6개, 댓글 9개 보존 확인.
+- 세 본부 모두 종료일 NULL, 현재 사전 신청 마지막 날짜 2026-12-31 확인. 매월 자동으로 연장됩니다.
+- Supabase 보안 진단에서 WARN/ERROR 없음. INFO의 RLS 정책 없음은 직접 테이블 접근을 막고 서버 RPC만 사용하는 의도된 구조입니다.
+  [RLS 진단 설명](https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy).
+- 성능 진단의 미색인 외래키는 8개에서 앞서 설명한 중복 색인이 불필요한 1개로 감소했습니다.
+  새 인덱스의 미사용 INFO는 생성 직후 통계이며 [진단 설명](https://supabase.com/docs/guides/database/database-linter?lint=0005_unused_index)을 참고합니다.
+
+모바일 QA는 iPhone 화면 크기의 Chromium 에뮬레이션입니다. 실제 iOS Safari나 카카오톡 인앱 브라우저를 직접 구동한 검증은 포함하지 않습니다.

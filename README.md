@@ -5,8 +5,8 @@
 [Group Node 기능·구조·DB 설치·QA](docs/GROUP_NODE.md)를 참고하세요. 기존 Lunch Node는 주황색, Group Node는 하늘색으로 구분하며 같은 계정으로 전환합니다.
 
 - 서비스: https://lunch-node.vercel.app/
-- 본부: **AX Node**, **Global**. 본부 선택 → 초대 코드 확인 → 이름 선택 → 숫자 6자리 PIN으로 등록·로그인합니다.
-- 하나의 Supabase 프로젝트 안에서 `ax_lunch_*`와 `global_lunch_*` 테이블·RPC·세션·초대 코드·운영자 키를 분리합니다.
+- 본부: **AX Node**, **Global**, **TMT**. 본부 선택 → 초대 코드 확인 → 이름 선택 → 숫자 6자리 PIN으로 등록·로그인합니다.
+- 하나의 Supabase 프로젝트 안에서 `ax_lunch_*`, `global_lunch_*`, `tmt_lunch_*` 테이블·RPC·세션·초대 코드·운영자 키를 분리합니다.
 - 운영 기간은 각 본부의 DB 설정을 따릅니다. AX Node·Global·TMT 모두 **종료일 없이** 운영하며 운영일은 평일입니다. 이번 달과 다음 두 달의 신청 일정이 자동으로 열립니다. 모든 운영 시각은 **한국 시간**입니다.
 
 ## 개발
@@ -36,7 +36,7 @@ npm run build
 | `lib/domain.ts` | 참석·취소·최초 편성·추가 참여·재편성·확정 로직 |
 | `lib/backend/` | 인증, 본부 분리, RPC, 운영자 권한, 서버 설정 |
 | `lib/client/` | 브라우저 API 요청과 탭별 본부 선택 |
-| `lib/roster.ts`, `lib/backend/global-roster.ts` | 본부별 고정 명단 |
+| `lib/roster.ts`, `lib/backend/{global,tmt}-roster.ts` | 본부별 고정 명단 |
 | `public/` | 서비스 로고 |
 | `supabase/` | 설치·전환 SQL과 기존 마이그레이션 이력 |
 | `scripts/` | SQL 및 전환 문서 생성 스크립트 |
@@ -52,13 +52,13 @@ npm run build
 | --- | --- |
 | `SUPABASE_URL` | 공통 Supabase 프로젝트 URL |
 | `SUPABASE_SERVICE_ROLE_KEY` | 공통 서버 전용 서비스 키 |
-| `AX_INVITE_CODE`, `GLOBAL_INVITE_CODE` | 서로 다른 본부 초대 코드 |
-| `AX_ADMIN_SECRET`, `GLOBAL_ADMIN_SECRET` | 서로 다른 32자 이상의 운영자 키 |
+| `AX_INVITE_CODE`, `GLOBAL_INVITE_CODE`, `TMT_INVITE_CODE` | 서로 다른 본부 초대 코드 |
+| `AX_ADMIN_SECRET`, `GLOBAL_ADMIN_SECRET`, `TMT_ADMIN_SECRET` | 서로 다른 32자 이상의 운영자 키 |
 | `CRON_SECRET` | Vercel 예약 작업 인증 키 |
 | `APP_ORIGIN` | `https://lunch-node.vercel.app` |
 | `DEMO_MODE` | 운영에서는 `false` |
 | `MAINTENANCE_MODE` | 정상 운영 `false`, 점검 시 `true` |
-| `OPERATION_START`, `OPERATION_END` | 체험 모드 전용 날짜. 운영 날짜는 DB에서 관리 |
+| `OPERATION_START`, `OPERATION_END` | 이전 설정 변수이며 현재 사용하지 않음. 삭제 가능. 운영 날짜는 DB, 데모는 `lib/operation.ts`에서 관리 |
 
 Vercel의 Root Directory는 저장소 루트, Framework Preset은 Next.js로 설정합니다. 빌드와 출력 경로는 기본값을 사용합니다. 환경변수 변경 후에는 재배포해야 반영됩니다.
 
@@ -68,6 +68,9 @@ Vercel의 Root Directory는 저장소 루트, Framework Preset은 Next.js로 설
 
 | 파일 | 대상 |
 | --- | --- |
+| `supabase/migrations/20261026124241_group_node.sql` | AX·Global 설치 후 Group Node 추가 |
+| `supabase/migrations/20261027141019_tmt_headquarters.sql` | TMT 18명과 Group Node 본부 연동 추가 |
+| `supabase/migrations/20261027143019_continuous_operation.sql` | AX·Global·TMT 종료일 제거 및 연속 운영 적용 |
 | `supabase/schema.sql` | 비어 있는 프로젝트에 AX·Global 신규 설치 |
 | `supabase/global-schema.sql` | AX만 있는 기존 프로젝트에 Global 추가 |
 | `supabase/upgrade-shared-db.sql` | 기존 `lunch_*` 구조에서 AX 이름 변경 및 Global 추가. 재실행 지원 |
@@ -116,3 +119,6 @@ DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/lunch_test ALLOW_DATABA
 [코드리뷰·QA 기록](docs/REVIEW_QA.md)
 
 연속 운영 설정은 [docs/CONTINUOUS_OPERATION.md](docs/CONTINUOUS_OPERATION.md), 전체 코드 리뷰와 QA 범위는 [docs/CODE_REVIEW_QA.md](docs/CODE_REVIEW_QA.md)를 참고하세요.
+
+비어 있는 DB 신규 설치 순서는 `schema.sql` → Group Node → TMT → 연속 운영입니다.
+현재 운영 DB에는 적용된 마이그레이션을 다시 실행하지 않습니다.
