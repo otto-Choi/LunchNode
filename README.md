@@ -75,6 +75,7 @@ Vercel의 Root Directory는 저장소 루트, Framework Preset은 Next.js로 설
 | `supabase/migrations/20261027143019_continuous_operation.sql` | AX·Global·TMT 종료일 제거 및 연속 운영 적용 |
 | `supabase/migrations/20261027144612_persistent_clubs.sql` | 지속형 소모임·기존 모임 전환·모임장 참여자 추가 |
 | `supabase/migrations/20261027151113_headquarters_administrators.sql` | 본부별 관리자 계정·통합 모임 관리 권한 |
+| `supabase/migrations/20261027154741_four_person_strict_meals.sql` | 필수 메뉴 우선·일반 조 최대 4명·도시락만 전원 조 최대 5명 |
 | `supabase/schema.sql` | 비어 있는 프로젝트에 AX·Global 신규 설치 |
 | `supabase/global-schema.sql` | AX만 있는 기존 프로젝트에 Global 추가 |
 | `supabase/upgrade-shared-db.sql` | 기존 `lunch_*` 구조에서 AX 이름 변경 및 Global 추가. 재실행 지원 |
@@ -96,7 +97,8 @@ python scripts/build-before-cutover.py
 ### 편성 및 예약 작업
 
 - **전날 22:00** 최초 편성, **당일 11:00** 최종 확정. 11시 이후 수정은 DB에서도 차단합니다.
-- 도시락만·외식만 조건을 지키고, 1~2명 조를 줄인 뒤 5명 조를 최소화하여 가능한 한 4명으로 편성합니다.
+- 일반 조는 최대 4명입니다. 전원이 도시락만을 선택한 도시락 조에만 최대 5명을 허용하며, 다른 메뉴가 섞이거나 외식 조이면 최대 4명입니다.
+- 도시락만·외식만 조건을 지키고 같은 필수 메뉴 신청자끼리 묶으며 반대 선호 혼합을 피하는 기준을 만남 이력보다 먼저 적용합니다. 인원이 맞지 않으면 1~2인 조도 허용해 참석자를 모두 배정합니다.
 - 같은 인원 구성에서는 최근 재회를 피하고, 누적 만남 횟수를 고려합니다. AX는 그다음 성비·반 혼합, Global은 IOA·IPO 혼합을 고려합니다. 부드러운 메뉴 선호는 필수 메뉴와 다르게 상황에 따라 바뀔 수 있습니다.
 - 일반 추가 참여·취소는 기존 조원의 배정을 유지합니다. 운영자 전체 재편성은 당일 11시 전, 최초 편성 후 가능합니다.
 - 최종 확정된 과거 조만 만남 기록에 사용합니다. 교체된 임시 조는 누적하지 않습니다.
@@ -124,5 +126,7 @@ DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/lunch_test ALLOW_DATABA
 
 연속 운영 설정은 [docs/CONTINUOUS_OPERATION.md](docs/CONTINUOUS_OPERATION.md), 전체 코드 리뷰와 QA 범위는 [docs/CODE_REVIEW_QA.md](docs/CODE_REVIEW_QA.md)를 참고하세요.
 
-비어 있는 DB 신규 설치 순서는 `schema.sql` → Group Node → TMT → 연속 운영 → 지속형 소모임 → 관리자 계정입니다.
+편성 기준과 예외는 [필수 메뉴·인원 제한 안내](docs/FOUR_PERSON_MATCHING.md)를 참고하세요.
+
+비어 있는 DB 신규 설치 순서는 `schema.sql` → Group Node → TMT → 연속 운영 → 지속형 소모임 → 관리자 계정 → 필수 메뉴·인원 제한입니다.
 현재 운영 DB에는 적용된 마이그레이션을 다시 실행하지 않습니다.
