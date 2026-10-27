@@ -198,8 +198,10 @@ export function rematchDay(state:State,date:string,people:Person[],now=new Date(
   return state.days[date];
 }
 export function syncDue(state:State,dates:string[],people:Person[],now=new Date(),random=Math.random,policy?:MatchingPolicy) {
-  applyDefaults(state,dates,people);
-  for(const date of dates){if(now<matchTime(date))continue;
+  // Final records are immutable and need no repeated default expansion.
+  const pending=dates.filter(date=>state.days[date]?.phase!=='final');
+  applyDefaults(state,pending,people);
+  for(const date of pending){if(now<matchTime(date))continue;
     if(!state.days[date])state.days[date]={groups:initialMatch(state,date,people,random,policy),phase:'matched',matchedAt:now.toISOString()};
     if(state.days[date].phase!=='final'){
       const assigned=new Set(state.days[date].groups.flatMap(g=>g.members.map(p=>p.id)));

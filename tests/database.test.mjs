@@ -6,7 +6,7 @@ import {createBackend} from '../lib/backend/service.ts';
 import {hashPin,digest} from '../lib/backend/security.ts';
 import {ROSTER} from '../lib/roster.ts';
 const db=databasePools();after(()=>db.close());
-const files=(await fs.readdir('supabase/migrations')).filter(f=>f.endsWith('.sql')&&f!=='20261023090100_global_tables.sql'&&!f.endsWith('_group_node.sql')&&!f.endsWith('_tmt_headquarters.sql')).sort();
+const files=(await fs.readdir('supabase/migrations')).filter(f=>f.endsWith('.sql')&&f!=='20261023090100_global_tables.sql'&&!f.endsWith('_group_node.sql')&&!f.endsWith('_tmt_headquarters.sql')&&!f.endsWith('_continuous_operation.sql')).sort();
 // Explicit test-only opt-in is checked before any destructive setup.
 await db.admin.query('drop schema public cascade; create schema public;');
 await db.admin.query(`do $$begin if not exists(select 1 from pg_roles where rolname='anon') then create role anon; end if; if not exists(select 1 from pg_roles where rolname='authenticated') then create role authenticated; end if; if not exists(select 1 from pg_roles where rolname='service_role') then create role service_role; end if; end$$;`);
@@ -351,4 +351,27 @@ test('TMT installer preserves existing HQs, enforces 18-person roster, and exten
  assert.deepEqual((await db.admin.query("select 'ax' as tenant,version,data from ax_lunch_state union all select 'global',version,data from global_lunch_state")).rows,before.rows);
  assert.deepEqual((await db.admin.query("select 'ax' as tenant,id,pin_hash from ax_lunch_users union all select 'global',id,pin_hash from global_lunch_users")).rows,accounts.rows);
  assert.equal((await db.admin.query("select has_function_privilege('anon','tmt_lunch_snapshot(text,boolean)','execute') as allowed")).rows[0].allowed,false);
+});
+
+test('continuous operation preserves data and allows future weekdays beyond the former end date',async()=>{
+ const baseline=await db.admin.query("select 'ax' as tenant,version,data from ax_lunch_state union all select 'global',version,data from global_lunch_state union all select 'tmt',version,data from tmt_lunch_state");
+ const accounts=await db.admin.query("select 'ax' as tenant,id,pin_hash from ax_lunch_users union all select 'global',id,pin_hash from global_lunch_users union all select 'tmt',id,pin_hash from tmt_lunch_users");
+ const sql=await fs.readFile('supabase/continuous-operation.sql','utf8');await db.admin.query(sql);await db.admin.query(sql);
+ assert.deepEqual((await db.admin.query("select 'ax' as tenant,version,data from ax_lunch_state union all select 'global',version,data from global_lunch_state union all select 'tmt',version,data from tmt_lunch_state")).rows,baseline.rows);
+ assert.deepEqual((await db.admin.query("select 'ax' as tenant,id,pin_hash from ax_lunch_users union all select 'global',id,pin_hash from global_lunch_users union all select 'tmt',id,pin_hash from tmt_lunch_users")).rows,accounts.rows);
+ for(const tenant of ['ax','global','tmt']){
+  const info=await db.rpc(tenant+'_lunch_tenant_info',{});assert.equal(info.endDate,null);
+  const snap=await db.rpc(tenant+'_lunch_snapshot',{p_token_hash:'',p_cron:true});assert.ok(snap.dates.includes('2026-12-01'));assert.ok(snap.dates.length<200);
+  const roster=(await db.admin.query(`select id from ${tenant}_lunch_roster order by id limit 1`)).rows[0];
+  snap.state.choices['2026-12-01']={[roster.id]:{status:'join',meal:'any'}};
+  assert.equal(await db.rpc(tenant+'_lunch_commit_state',{p_token_hash:'',p_expected_version:snap.version,p_data:snap.state,p_write_dates:['2026-12-01'],p_cron:true}),true);
+  assert.equal((await db.rpc(tenant+'_lunch_snapshot',{p_token_hash:'',p_cron:true})).state.choices['2026-12-01'][roster.id].status,'join');
+  const permissions=(await db.admin.query(`select has_function_privilege('anon','${tenant}_lunch_snapshot(text,boolean)','execute') as rpc,has_table_privilege('service_role','${tenant}_lunch_settings','select') as direct`)).rows[0];assert.deepEqual(permissions,{rpc:false,direct:false});
+ }
+ const {rows:[{dates}]}=await db.admin.query("select lunch_operation_private.calendar_dates('2026-10-22',null,'2026-12-31T23:59:00+09:00') as dates");
+ assert.ok(dates.includes('2027-01-01'));assert.equal(dates.at(-1),'2027-02-26');assert.ok(!dates.includes('2027-03-01'));
+ const leap=(await db.admin.query("select lunch_operation_private.calendar_dates('2028-02-01',null,'2028-02-29T12:00:00+09:00') as dates")).rows[0].dates;assert.ok(leap.includes('2028-02-29'));assert.equal(leap.at(-1),'2028-04-28');
+ const future=(await db.admin.query("select lunch_operation_private.calendar_dates('2039-12-01',null,'2040-01-01T00:00:00+09:00') as dates")).rows[0].dates;assert.ok(future.includes('2040-03-30'));assert.ok(!future.includes('2040-04-02'));
+ const finite=(await db.admin.query("select lunch_operation_private.calendar_dates('2026-10-22','2026-11-30','2026-10-27T12:00:00+09:00') as dates")).rows[0].dates;assert.equal(finite.at(-1),'2026-11-30');
+ const grants=(await db.admin.query("select has_schema_privilege('anon','lunch_operation_private','usage') as browser,has_function_privilege('service_role','lunch_operation_private.calendar_dates(date,date,timestamptz)','execute') as server")).rows[0];assert.deepEqual(grants,{browser:false,server:false});
 });

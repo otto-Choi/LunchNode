@@ -34,7 +34,7 @@ export default function GroupNode({user,tenant,active,view,navigation,demo=false
  const closed=detail&&(detail.status==='cancelled'||(detail.confirmedDateId?detail.dates.find(d=>d.id===detail.confirmedDateId)!.date<today:detail.dates.every(d=>d.date<today)));const maxVotes=Math.max(0,...(detail?.dates.map(d=>d.voters.length)||[]));
  const save=(input:MeetupInput)=>void mutate(id?'update':'create',input as unknown as Record<string,unknown>);
  return <section className="group-node" aria-label="Group Node 소모임">
-  <div className="gn-heading"><div><span className="gn-kicker">GROUP NODE</span><h1>{editor?(id?'모임 수정':'모임 만들기'):id?'모임 상세':view==='mine'?'내 모임':view==='past'?'지난 모임':'모임 둘러보기'}</h1><p>AX Node와 Global, 함께 모이는 곳</p></div>{!id&&!editor&&<button className="gn-primary" onClick={()=>{setEditor(true);setError('');}} disabled={demo}>+ 모임 만들기</button>}</div>
+  <div className="gn-heading"><div><span className="gn-kicker">GROUP NODE</span><h1>{editor?(id?'모임 수정':'모임 만들기'):id?'모임 상세':view==='mine'?'내 모임':view==='past'?'지난 모임':'모임 둘러보기'}</h1><p>본부를 넘어 함께 모이는 곳</p></div>{!id&&!editor&&<button className="gn-primary" onClick={()=>{setEditor(true);setError('');}} disabled={demo}>+ 모임 만들기</button>}</div>
   {demo?<p className="gn-empty">소모임은 실제 계정으로 로그인하면 이용할 수 있습니다.</p>:<>
   {error&&<div className="gn-error" role="alert">{error}<button className="gn-secondary" onClick={()=>void load()}>다시 불러오기</button></div>}
   {notice&&<p role="status" className="gn-notice">{notice}</p>}
