@@ -75,7 +75,8 @@ Vercel의 Root Directory는 저장소 루트, Framework Preset은 Next.js로 설
 | `supabase/migrations/20261027143019_continuous_operation.sql` | AX·Global·TMT 종료일 제거 및 연속 운영 적용 |
 | `supabase/migrations/20261027144612_persistent_clubs.sql` | 지속형 소모임·기존 모임 전환·모임장 참여자 추가 |
 | `supabase/migrations/20261027151113_headquarters_administrators.sql` | 본부별 관리자 계정·통합 모임 관리 권한 |
-| `supabase/migrations/20261027154741_four_person_strict_meals.sql` | 필수 메뉴 우선·일반 조 최대 4명·도시락만 전원 조 최대 5명 |
+| `supabase/migrations/20261027154741_four_person_strict_meals.sql` | 기존 날짜의 필수 메뉴·4명/도시락만 5명 규칙 |
+| `supabase/migrations/20261028035057_lunchbox_pool.sql` | 10월 29일부터 도시락만 단일 묶음·그 외 최대 4명 |
 | `supabase/schema.sql` | 비어 있는 프로젝트에 AX·Global 신규 설치 |
 | `supabase/global-schema.sql` | AX만 있는 기존 프로젝트에 Global 추가 |
 | `supabase/upgrade-shared-db.sql` | 기존 `lunch_*` 구조에서 AX 이름 변경 및 Global 추가. 재실행 지원 |
