@@ -6,7 +6,7 @@ import {createBackend} from '../lib/backend/service.ts';
 import {hashPin,digest} from '../lib/backend/security.ts';
 import {ROSTER} from '../lib/roster.ts';
 const db=databasePools();after(()=>db.close());
-const files=(await fs.readdir('supabase/migrations')).filter(f=>f.endsWith('.sql')&&f!=='20261023090100_global_tables.sql'&&!f.endsWith('_group_node.sql')&&!f.endsWith('_tmt_headquarters.sql')&&!f.endsWith('_continuous_operation.sql')&&!f.endsWith('_persistent_clubs.sql')&&!f.endsWith('_headquarters_administrators.sql')&&!f.endsWith('_four_person_strict_meals.sql')).sort();
+const files=(await fs.readdir('supabase/migrations')).filter(f=>f.endsWith('.sql')&&f!=='20261023090100_global_tables.sql'&&!f.endsWith('_group_node.sql')&&!f.endsWith('_tmt_headquarters.sql')&&!f.endsWith('_continuous_operation.sql')&&!f.endsWith('_persistent_clubs.sql')&&!f.endsWith('_headquarters_administrators.sql')&&!f.endsWith('_four_person_strict_meals.sql')&&!f.endsWith('_lunchbox_pool.sql')).sort();
 // Explicit test-only opt-in is checked before any destructive setup.
 await db.admin.query('drop schema public cascade; create schema public;');
 await db.admin.query(`do $$begin if not exists(select 1 from pg_roles where rolname='anon') then create role anon; end if; if not exists(select 1 from pg_roles where rolname='authenticated') then create role authenticated; end if; if not exists(select 1 from pg_roles where rolname='service_role') then create role service_role; end if; end$$;`);
@@ -526,5 +526,43 @@ test('all headquarters allow five only for pure lunchbox-only writes and rematch
   const historical='2026-01-05';await db.admin.query(`update ${tenant}_lunch_state set data=jsonb_set(data,array['days',$1],$2::jsonb,true)`,[historical,JSON.stringify({phase:'final',matchedAt:'2026-01-04T22:00:00+09:00',groups:[group]})]);
   const saved=await db.rpc(tenant+'_lunch_snapshot',{p_token_hash:'',p_cron:true});assert.equal(await db.rpc(tenant+'_lunch_commit_state',{p_token_hash:'',p_expected_version:saved.version,p_data:saved.state,p_write_dates:[],p_cron:true}),true);
   saved.state.days[historical].groups=valid;await assert.rejects(db.rpc(tenant+'_lunch_commit_state',{p_token_hash:'',p_expected_version:saved.version+1,p_data:saved.state,p_write_dates:[],p_cron:true}),e=>e.status===409);
+ }
+});
+
+test('Oct 29 pool rules enforce one strict-only pool and four-person ordinary groups across all headquarters',async()=>{
+ const before=(await db.admin.query("select 'ax' tenant,version,data from ax_lunch_state union all select 'global',version,data from global_lunch_state union all select 'tmt',version,data from tmt_lunch_state")).rows;
+ const sql=await fs.readFile('supabase/lunchbox-pool.sql','utf8');await db.admin.query(sql);await db.admin.query(sql);
+ assert.deepEqual((await db.admin.query("select 'ax' tenant,version,data from ax_lunch_state union all select 'global',version,data from global_lunch_state union all select 'tmt',version,data from tmt_lunch_state")).rows,before);
+ const future=(await db.admin.query("select to_char(d,'YYYY-MM-DD') date from generate_series((current_date+interval '2 years')::date,(current_date+interval '2 years 7 days')::date,interval '1 day') d where extract(isodow from d)<6 order by d limit 1")).rows[0].date;
+ for(const tenant of ['ax','global','tmt']){
+  const snap=await db.rpc(tenant+'_lunch_snapshot',{p_token_hash:'',p_cron:true}),people=snap.people.slice(0,10),state=structuredClone(snap.state);
+  state.choices[future]=Object.fromEntries(people.map((p,i)=>[p.id,{status:'join',meal:i<6?'lunchbox':'outside'}]));
+  const pool={id:'pool',kind:'lunchbox_pool',meal:'lunchbox',members:people.slice(0,6)},ordinary={id:'ordinary',meal:'outside',members:people.slice(6)};
+  state.days[future]={phase:'matched',matchedAt:future+'T00:00:00+09:00',groups:[pool,ordinary]};
+  assert.equal(await db.rpc(tenant+'_lunch_commit_state',{p_token_hash:'',p_expected_version:snap.version,p_data:state,p_write_dates:[],p_cron:true}),true);
+  const save=groups=>db.rpc(tenant+'_lunch_commit_state',{p_token_hash:'',p_expected_version:snap.version+1,p_data:{...state,days:{...state.days,[future]:{...state.days[future],groups}}},p_write_dates:[],p_cron:true});
+  for(const invalid of [
+   [{...pool,members:[...people.slice(0,6),people[6]]},{...ordinary,members:people.slice(7)}],
+   [{...pool,members:people.slice(0,3)},{...pool,id:'second',members:people.slice(3,6)},ordinary],
+   [{...pool,kind:undefined},ordinary],
+   [pool,{...ordinary,members:[...people.slice(6),people[6]]}],
+   [pool,{...ordinary,members:people.slice(7)}],
+   [{...pool,members:[...people.slice(0,6),people[0]]},ordinary],
+  ])await assert.rejects(save(invalid),e=>[400,409].includes(e.status));
+  const token=(await db.admin.query(`select s.token_hash from ${tenant}_lunch_sessions s join ${tenant}_lunch_roster r on r.id=s.user_id where not r.is_admin and s.expires_at>clock_timestamp() limit 1`)).rows[0].token_hash;
+  const rematch=sql.match(new RegExp('create or replace function public\\.'+tenant+'_lunch_admin_rematch\\([\\s\\S]*?\\n\\$\\$;'))[0];
+  const initial=sql.match(new RegExp('create or replace function public\\.'+tenant+'_lunch_admin_initial_match\\([\\s\\S]*?\\n\\$\\$;'))[0];
+  const settings=(await db.admin.query(`select start_date::text from ${tenant}_lunch_settings where id=1`)).rows[0];
+  try{
+   await db.admin.query(rematch.replaceAll('clock_timestamp()',`'${future}T10:00:00+09:00'::timestamptz`));
+   await assert.rejects(db.rpc(tenant+'_lunch_admin_rematch',{p_actor_token:token,p_expected_version:snap.version+1,p_date:future,p_groups:[{...pool,kind:undefined},ordinary]}),e=>e.status===400);
+   assert.equal(await db.rpc(tenant+'_lunch_admin_rematch',{p_actor_token:token,p_expected_version:snap.version+1,p_date:future,p_groups:[pool,ordinary]}),true);
+   await db.admin.query(`update ${tenant}_lunch_settings set start_date=$1`,[future]);
+   await db.admin.query(`update ${tenant}_lunch_state set data=data #- array['days',$1]`,[future]);
+   await db.admin.query(initial.replaceAll('clock_timestamp()',`'${future}T10:00:00+09:00'::timestamptz`));
+   assert.equal(await db.rpc(tenant+'_lunch_admin_initial_match',{p_actor_token:token,p_expected_version:snap.version+2,p_date:future,p_groups:[pool,ordinary]}),true);
+   const saved=await db.rpc(tenant+'_lunch_snapshot',{p_token_hash:'',p_cron:true});assert.deepEqual(saved.state.choices[future],state.choices[future]);
+   for(const [day,value] of Object.entries(snap.state.days))if(value.phase==='final')assert.deepEqual(saved.state.days[day],value);
+  }finally{await db.admin.query(rematch);await db.admin.query(initial);await db.admin.query(`update ${tenant}_lunch_settings set start_date=$1`,[settings.start_date]);}
  }
 });

@@ -4,7 +4,7 @@ export type MatchingPolicy = { effectiveDate:string; genderByName:Readonly<Recor
 export type MealType = 'lunchbox' | 'outside';
 export type Choice = { status: 'unset' | 'join' | 'absent'; meal: Meal };
 export type Person = { id: string; name: string; className: string; defaultStatus?: 'unset' | 'absent'; isAdmin?:boolean };
-export type Group = { id: string; meal: MealType; members: Person[] };
+export type Group = { id: string; meal: MealType; members: Person[]; kind?:'lunchbox_pool' };
 export type Day = { groups: Group[]; phase: 'matched'|'final'; matchedAt: string; finalizedAt?: string; rematchedAt?: string };
 export type ChoiceOrigin = 'selected'|'default';
 export type State = { choiceOrigins?:Record<string,Record<string,ChoiceOrigin>>; choices: Record<string, Record<string,Choice>>; days: Record<string,Day>; events: {date:string; userId:string; action:string; at:string}[] };
@@ -48,6 +48,9 @@ export function weekdays(start: string, end: string) {
   return result;
 }
 const shuffle = <T,>(items:T[], random:()=>number) => { const a=[...items];for(let i=a.length-1;i>0;i--){const j=Math.floor(random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a; };
+export const LUNCHBOX_POOL_START_DATE='2026-10-29';
+export const isLunchboxPool=(group:Pick<Group,'kind'>)=>group.kind==='lunchbox_pool';
+export const groupNumber=(groups:Group[],group:Group)=>groups.filter(g=>!isLunchboxPool(g)).indexOf(group)+1;
 export const MAX_GROUP_SIZE=4;
 export const LUNCHBOX_ONLY_MAX_GROUP_SIZE=5;
 function sizes(n:number,maximum=MAX_GROUP_SIZE,cohesive=false):number[] {
@@ -62,7 +65,7 @@ function sizes(n:number,maximum=MAX_GROUP_SIZE,cohesive=false):number[] {
 function memberCapacity(members:Person[],meal:MealType,choice:(person:Person)=>Meal){
  return meal==='lunchbox'&&members.every(p=>choice(p)==='lunchbox')?LUNCHBOX_ONLY_MAX_GROUP_SIZE:MAX_GROUP_SIZE;
 }
-export function groupLimit(group:Pick<Group,'meal'|'members'>,choices?:Record<string,Choice>){return memberCapacity(group.members,group.meal,p=>choices?.[p.id]?.meal||'any');}
+export function groupLimit(group:Pick<Group,'meal'|'members'|'kind'>,choices?:Record<string,Choice>){return isLunchboxPool(group)?Infinity:memberCapacity(group.members,group.meal,p=>choices?.[p.id]?.meal||'any');}
 // Keep mandatory-menu participants together and avoid opposite soft preferences
 // inside those groups before comparing group sizes, encounter history or balance.
 function menuStructure(members:Person[],meal:MealType,choice:(person:Person)=>Meal) {
@@ -71,7 +74,7 @@ function menuStructure(members:Person[],meal:MealType,choice:(person:Person)=>Me
  return {cohesion:strict?(meal==='lunchbox'?LUNCHBOX_ONLY_MAX_GROUP_SIZE:MAX_GROUP_SIZE)-strict:0,opposite:strict*opposite};
 }
 export function encounters(state:State, date:string, a:string, b:string) {
-  return Object.entries(state.days).filter(([d,v])=>d<date&&v.phase==='final').reduce((n,[,v])=>n+Number(v.groups.some(g=>g.members.some(p=>p.id===a)&&g.members.some(p=>p.id===b))),0);
+  return Object.entries(state.days).filter(([d,v])=>d<date&&v.phase==='final').reduce((n,[,v])=>n+Number(v.groups.some(g=>!isLunchboxPool(g)&&g.members.some(p=>p.id===a)&&g.members.some(p=>p.id===b))),0);
 }
 // Mandatory menu cohesion and opposite-preference avoidance precede size,
 // historical encounters, composition, cohort balance and soft menu mismatches.
@@ -80,7 +83,7 @@ function matchingCosts(state:State,date:string,people:Person[],policy?:MatchingP
   const index=new Map(people.map((p,i)=>[p.id,i]));
   const counts=people.map(()=>people.map(()=>0));
   const latest=people.map(()=>people.map(()=>-1));
-  history.forEach(([,day],dayIndex)=>{for(const group of day.groups)for(let i=0;i<group.members.length;i++)for(let j=i+1;j<group.members.length;j++){
+  history.forEach(([,day],dayIndex)=>{for(const group of day.groups.filter(g=>!isLunchboxPool(g)))for(let i=0;i<group.members.length;i++)for(let j=i+1;j<group.members.length;j++){
     const a=index.get(group.members[i].id),b=index.get(group.members[j].id);if(a===undefined||b===undefined)continue;
     counts[a][b]++;counts[b][a]++;latest[a][b]=latest[b][a]=dayIndex;
   }});
@@ -110,6 +113,12 @@ function matchingCosts(state:State,date:string,people:Person[],policy?:MatchingP
   return {pairs,index,smallUnit,preferenceUnit,threeUnit,balanceUnit,balanceCost,classUnit,classCost,oppositeUnit,strictUnit};
 }
 export function initialMatch(state:State,date:string,people:Person[],random=Math.random,policy?:MatchingPolicy):Group[] {
+  if(date<LUNCHBOX_POOL_START_DATE)return matchGroups(state,date,people,random,policy);
+  const box=people.filter(p=>state.choices[date]?.[p.id]?.status==='join'&&state.choices[date][p.id].meal==='lunchbox');
+  const regular=matchGroups(state,date,people.filter(p=>!box.some(b=>b.id===p.id)),random,policy);
+  return [...(box.length?[{id:`${date}-lunchbox`,meal:'lunchbox' as const,kind:'lunchbox_pool' as const,members:box.map(p=>({...p}))}]:[]),...regular];
+}
+function matchGroups(state:State,date:string,people:Person[],random=Math.random,policy?:MatchingPolicy):Group[] {
   const choices=state.choices[date]??{};
   const joined=shuffle(people.filter(p=>choices[p.id]?.status==='join'),random);
   if(!joined.length)return [];
@@ -200,7 +209,14 @@ export function initialMatch(state:State,date:string,people:Person[],random=Math
 }
 export function addMember(state:State,date:string,person:Person,meal:Meal,random=Math.random,policy?:MatchingPolicy) {
   const day=state.days[date];if(day.groups.some(g=>g.members.some(p=>p.id===person.id)))return;
-  const people=[person,...day.groups.flatMap(g=>g.members)];
+  if(date>=LUNCHBOX_POOL_START_DATE&&meal==='lunchbox'){
+    const pool=day.groups.find(isLunchboxPool);
+    if(pool)pool.members.push({...person});
+    else day.groups.unshift({id:`${date}-lunchbox`,meal:'lunchbox',kind:'lunchbox_pool',members:[{...person}]});
+    return;
+  }
+  const regularGroups=day.groups.filter(g=>!isLunchboxPool(g));
+  const people=[person,...regularGroups.flatMap(g=>g.members)];
   const weights=matchingCosts(state,date,people,policy);
   const choice=(p:Person)=>p.id===person.id?meal:state.choices[date]?.[p.id]?.meal||'any';
   const cost=(members:Person[],actual:MealType)=>{
@@ -214,7 +230,7 @@ export function addMember(state:State,date:string,person:Person,meal:Meal,random
     }
     return value;
   };
-  const candidates:{group:Group|undefined;actual:MealType;cost:bigint}[]=shuffle(day.groups.filter(g=>g.members.length+1<=memberCapacity([...g.members,person],g.meal,choice)&&allowsMeal(meal,g.meal)),random).map(group=>({group,actual:group.meal,cost:cost([...group.members,person],group.meal)-cost(group.members,group.meal)}));
+  const candidates:{group:Group|undefined;actual:MealType;cost:bigint}[]=shuffle(regularGroups.filter(g=>g.members.length+1<=memberCapacity([...g.members,person],g.meal,choice)&&allowsMeal(meal,g.meal)),random).map(group=>({group,actual:group.meal,cost:cost([...group.members,person],group.meal)-cost(group.members,group.meal)}));
   for(const actual of ['lunchbox','outside'] as const)if(allowsMeal(meal,actual))candidates.push({group:undefined as Group|undefined,actual,cost:cost([person],actual)});
   candidates.sort((a,b)=>a.cost<b.cost?-1:a.cost>b.cost?1:0);
   const winner=candidates[0];
@@ -235,7 +251,7 @@ export function syncDue(state:State,dates:string[],people:Person[],now=new Date(
   applyDefaults(state,pending,people);
   for(const date of pending){if(now<matchTime(date))continue;
     if(!state.days[date])state.days[date]={groups:initialMatch(state,date,people,random,policy),phase:'matched',matchedAt:now.toISOString()};
-    if(state.days[date].phase!=='final'&&now<cutoff(date)&&state.days[date].groups.some(g=>g.members.length>groupLimit(g,state.choices[date])||menuStructure(g.members,g.meal,p=>state.choices[date]?.[p.id]?.meal||'any').opposite>0)){
+    if(date<LUNCHBOX_POOL_START_DATE&&state.days[date].phase!=='final'&&now<cutoff(date)&&state.days[date].groups.some(g=>g.members.length>groupLimit(g,state.choices[date])||menuStructure(g.members,g.meal,p=>state.choices[date]?.[p.id]?.meal||'any').opposite>0)){
       state.days[date]={...state.days[date],groups:initialMatch(state,date,people,random,policy),rematchedAt:now.toISOString()};
     }
     if(state.days[date].phase!=='final'){
