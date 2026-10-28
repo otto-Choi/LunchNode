@@ -148,3 +148,42 @@ body{color:var(--ink)}
  .calendar-dates .cell-bottom{font-size:12px}
 }
 @media(max-width:760px){.calendar-dates .date-cell.past-date{display:none}}
+
+/* Service help and headquarters use the central registry, with readable mobile text. */
+.sidebar-information{margin-top:auto;padding-top:20px}
+.sidebar-information .guide-link{margin:0;padding:12px 11px;min-height:44px;width:100%;font-size:14px}
+.information-modal{width:640px;padding:30px;line-height:1.75}
+.information-modal h2{padding-right:30px}
+.information-modal .modal-close{min-width:44px;min-height:44px;top:12px;right:12px}
+.information-intro{font-size:15px;color:#68717a;margin-top:12px}
+.service-guide-content section{padding:22px 0;border-bottom:1px solid var(--line)}
+.service-guide-content h3{font-size:17px;line-height:1.5;margin-bottom:12px}
+.service-guide-content p,.service-guide-content li,.service-guide-content dd{font-size:15px;line-height:1.85;color:#4e5660;overflow-wrap:anywhere}
+.service-guide-content p+p{margin-top:10px}
+.service-guide-content ul{padding-left:20px;margin:0}
+.service-guide-content li+li{margin-top:9px}
+.guide-meals,.guide-times{margin:12px 0 0}
+.guide-meals>div,.guide-times>div{display:grid;grid-template-columns:145px minmax(0,1fr);gap:12px;padding:10px 0;border-top:1px solid var(--line)}
+.guide-meals dt,.guide-times dt{font-size:15px;font-weight:600}
+.guide-meals dd,.guide-times dd{margin:0}
+.information-note,.service-guide-content .information-note{font-size:14px;line-height:1.8;color:#68717a;margin-top:14px}
+.guide-service-switch{display:flex;gap:8px;margin-top:22px}
+.guide-service-switch button{flex:1;min-height:44px;border:1px solid var(--line);border-radius:8px;font-size:15px;font-weight:600}
+.guide-service-switch button[aria-pressed=true]{background:#fff0e9;border-color:#e9531d;color:#c14011}
+.guide-service-switch button:last-child[aria-pressed=true]{background:#eaf7ff;border-color:#61b7e9;color:#176b9e}
+.guide-directory-link{display:flex;align-items:center;flex-wrap:wrap;gap:12px;margin-top:22px;font-size:14px;color:#68717a}
+.guide-directory-link button,.information-back{min-height:44px;font-size:15px}
+.headquarters-list{list-style:none;margin:22px 0;padding:0}
+.headquarters-list li{display:flex;align-items:center;gap:14px;padding:16px 0;border-bottom:1px solid var(--line);min-height:64px}
+.headquarters-order{color:#7c8792;font-size:14px;font-variant-numeric:tabular-nums}
+.headquarters-list strong{font-size:17px}
+.headquarters-status{margin-left:auto;white-space:nowrap;font-size:14px;background:#f1f3f5;color:#68717a;padding:4px 10px;border-radius:6px}
+.headquarters-status.available{background:#eaf7f0;color:#276b48}
+.information-back{margin-top:20px}
+@media(max-width:760px){
+ .information-modal{padding:24px 20px;max-height:88dvh}
+ .service-guide-content p,.service-guide-content li,.service-guide-content dd,.guide-meals dt,.guide-times dt{font-size:16px}
+ .guide-meals>div,.guide-times>div{grid-template-columns:minmax(0,1fr);gap:3px;padding:12px 0}
+ .service-guide-content h3{font-size:18px}
+ .headquarters-list li{gap:10px}.headquarters-status{font-size:13px;padding:4px 8px}
+}

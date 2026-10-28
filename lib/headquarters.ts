@@ -1,3 +1,4 @@
+// Append new headquarters here in launch-registration order; shared lists preserve this order.
 export const HEADQUARTERS=[{id:'ax',label:'AX Node'},{id:'global',label:'Global'},{id:'tmt',label:'TMT'},{id:'deal',label:'DEAL'}] as const;
 export type HeadquartersId=typeof HEADQUARTERS[number]['id'];
 export function isHeadquarters(value:unknown):value is HeadquartersId{return HEADQUARTERS.some(h=>h.id===value);}
