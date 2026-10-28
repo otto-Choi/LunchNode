@@ -110,6 +110,8 @@ python scripts/build-before-cutover.py
 
 ## QA
 
+DEAL 본부는 명단 수신 전 준비 단계이며 가입·자동 편성을 열지 않습니다. [DEAL 준비 및 개방 절차](docs/DEAL_SETUP.md)를 참고하세요.
+
 GitHub Actions의 `Verify backend and application`이 타입 검사 → 단위 테스트 → PostgreSQL 17 통합 테스트 → 프로덕션 빌드 → PC·모바일 Chromium 브라우저 테스트를 실행합니다. 실행 기록과 실패 시 trace는 [Actions](https://github.com/otto-Choi/LunchNode/actions)에서 확인할 수 있습니다.
 
 DB·브라우저 테스트는 **삭제해도 되는 전용 DB**에서만 실행합니다. `ALLOW_DATABASE_RESET=1`은 해당 DB 초기화를 허용하는 명시적 스위치입니다.

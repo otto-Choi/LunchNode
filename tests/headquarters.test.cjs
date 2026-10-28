@@ -96,3 +96,29 @@ test('TMT isolated registration, cookies, choices, secrets and scheduled jobs',a
  const {tenantConfig}=await import('../lib/backend/tenant-config.ts');assert.deepEqual(tenantConfig('tmt').policy.genderByName,{});assert.equal(tenantConfig('tmt').policy.balanceClasses,true);
  f.env.TMT_ADMIN_SECRET=f.env.GLOBAL_ADMIN_SECRET;assert.equal((await f.call('state','tmt',undefined,cookie)).status,503);
 });
+
+test('DEAL remains visibly pending and cannot access any backend before its roster is supplied',async()=>{
+ const f=await fixture();
+ f.env.DEAL_INVITE_CODE='DEAL36';f.env.DEAL_ADMIN_SECRET='deal-operator-key-longer-than-32-characters';
+ const listed=await (await f.call('tenants','ax')).json();
+ assert.deepEqual(listed.headquarters.find(h=>h.id==='deal'),{id:'deal',label:'DEAL',available:false});
+ assert.ok(listed.headquarters.filter(h=>['ax','global'].includes(h.id)).every(h=>h.available));
+ for(const endpoint of ['auth','state','profile','admin','group-node']){
+  const result=await f.call(endpoint,'deal',endpoint==='auth'?{action:'unlock',invite:'DEAL36'}:undefined);
+  assert.equal(result.status,503);assert.equal((await result.json()).code,'NOT_READY');
+ }
+ assert.deepEqual(f.calls,[]);
+ const jobs=await (await f.call('cron','ax',undefined,'',{authorization:'Bearer cron'})).json();
+ assert.deepEqual(jobs.results.map(r=>r.id),['ax','global']);assert.ok(jobs.results.every(r=>r.ok));
+ assert.ok(!f.calls.some(name=>name.startsWith('deal_')));
+ const {tenantConfig}=await import('../lib/backend/tenant-config.ts');
+ assert.deepEqual(tenantConfig('deal').roster,[]);assert.deepEqual(tenantConfig('deal').policy.genderByName,{});
+});
+
+test('DEAL RPC requests are namespaced separately and never fall back to another headquarters',async()=>{
+ const {tenantRpc}=await import('../lib/backend/tenant-rpc.ts');const calls=[];
+ const rpc=tenantRpc(async(name,args)=>{calls.push({name,args});return null;},'deal');
+ await rpc('lunch_tenant_info',{});await rpc('lunch_snapshot',{p_token_hash:'test-token'});
+ assert.deepEqual(calls.map(c=>c.name),['deal_lunch_tenant_info','deal_lunch_snapshot']);
+ assert.throws(()=>rpc('global_lunch_snapshot',{}),/Invalid LunchNode RPC/);
+});
