@@ -21,7 +21,7 @@ begin
    elsif p_choices->(m->>'id')->>'meal'='outside' and g->>'meal'<>'outside' then raise exception using errcode='LN400',message='외식만 조건을 확인해 주세요.';end if;
   end loop;
  end loop;
- select coalesce(array_agg(m->>'id' order by m->>'id'),'{}'::text[]) into actual_ids from jsonb_array_elements(p_groups) g cross join lateral jsonb_array_elements(g->'members') m;
+ select coalesce(array_agg(item_member.value->>'id' order by item_member.value->>'id'),'{}'::text[]) into actual_ids from jsonb_array_elements(p_groups) item_group cross join lateral jsonb_array_elements(item_group.value->'members') item_member;
  select coalesce(array_agg(key order by key),'{}'::text[]) into expected_ids from jsonb_each(coalesce(p_choices,'{}'::jsonb)) where value->>'status'='join';
  if actual_ids is distinct from expected_ids then raise exception using errcode='LN409',message='참석자가 누락되거나 중복되었습니다. 다시 시도해 주세요.';end if;
 end;
