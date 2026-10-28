@@ -8,8 +8,9 @@ import {ApiError,errorResponse,response,secretEqual} from './security.ts';
 type Env=Record<string,string|undefined>;
 type Endpoint='auth'|'state'|'profile'|'cron'|'health'|'admin'|'tenants'|'group-node';
 export function createApplication({env,rpcFactory=supabaseRpc}:{env:Env;rpcFactory?:(url:string,key:string)=>Rpc}){
- const config=(id:HeadquartersId)=>({url:env.SUPABASE_URL||env.AX_SUPABASE_URL,key:env.SUPABASE_SERVICE_ROLE_KEY||env.AX_SUPABASE_SERVICE_ROLE_KEY,...(id==='ax'?{invite:env.AX_INVITE_CODE||env.INVITE_CODE,admin:env.AX_ADMIN_SECRET||env.ADMIN_SECRET}:id==='global'?{invite:env.GLOBAL_INVITE_CODE,admin:env.GLOBAL_ADMIN_SECRET}:{invite:env.TMT_INVITE_CODE,admin:env.TMT_ADMIN_SECRET})});
+ const config=(id:HeadquartersId)=>({url:env.SUPABASE_URL||env.AX_SUPABASE_URL,key:env.SUPABASE_SERVICE_ROLE_KEY||env.AX_SUPABASE_SERVICE_ROLE_KEY,...(id==='ax'?{invite:env.AX_INVITE_CODE||env.INVITE_CODE,admin:env.AX_ADMIN_SECRET||env.ADMIN_SECRET}:{invite:env[`${id.toUpperCase()}_INVITE_CODE`],admin:env[`${id.toUpperCase()}_ADMIN_SECRET`]})});
  function validate(id:HeadquartersId){
+  if(!tenantConfig(id).roster.length)throw new ApiError(503,'NOT_READY','본부 명단 준비 중입니다.');
   const c=config(id);if(!c.url||!c.key)throw new ApiError(503,'CONFIG','본부 DB 연결 설정이 필요합니다.');
   if(id!=='ax'){
    const others=HEADQUARTERS.filter(h=>h.id!==id).map(h=>config(h.id));
@@ -42,7 +43,7 @@ export function createApplication({env,rpcFactory=supabaseRpc}:{env:Env;rpcFacto
   if(endpoint==='cron'){
    if(request.method!=='GET')return response({error:'허용되지 않은 메서드입니다.'},405);
    if(!env.CRON_SECRET||!secretEqual(request.headers.get('authorization')||'',`Bearer ${env.CRON_SECRET}`))throw new ApiError(401,'AUTH','인증이 필요합니다.');
-   const ids:HeadquartersId[]=['ax'];if(env.GLOBAL_INVITE_CODE||env.GLOBAL_ADMIN_SECRET)ids.push('global');if(env.TMT_INVITE_CODE||env.TMT_ADMIN_SECRET)ids.push('tmt');
+   const ids=HEADQUARTERS.filter(h=>tenantConfig(h.id).roster.length&&(h.id==='ax'||config(h.id).invite||config(h.id).admin)).map(h=>h.id);
    const results=await Promise.all(ids.map(async id=>{
     let rpc:Rpc|undefined;
     try{const b=await backend(id);rpc=b.rpc;const result=await b.service.handle('cron',request);if(!result.ok)throw new ApiError(result.status,'JOB','자동 작업에 실패했습니다.');
