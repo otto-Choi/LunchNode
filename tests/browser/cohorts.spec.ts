@@ -13,7 +13,7 @@ test('35 can register a free name with AX35 and can only use Group Node',async({
  const denied=await page.request.post('/api/state',{headers:{origin:new URL(page.url()).origin,'x-lunch-cohort':'35','x-lunch-tenant':'ax'},data:{dates:['2026-11-02'],choice:{status:'join',meal:'any'}}});expect(denied.status()).toBe(403);
  await page.reload();await expect(page.locator('header')).toContainText(name);await expect(page.getByRole('button',{name:'Lunch Node',exact:true})).toHaveCount(0);
  await navigateMenu(page,'모임 둘러보기');await page.getByRole('button',{name:'+ 모임 만들기',exact:true}).click();const scope=page.getByLabel('모집 범위');await expect(scope.locator('option[value="cohort"]')).toHaveText('동기만');await expect(scope.locator('option[value="all"]')).toHaveText('전체');
- await page.getByLabel('모임 유형').selectOption('club');await page.getByLabel('모임 이름').fill(name+' 소모임');await scope.selectOption('cohort');await page.getByRole('button',{name:'모임 만들기',exact:true}).click();
+ await page.getByLabel('모임 유형').selectOption('club');await page.getByLabel('모임 이름').fill(name+' 소모임');await scope.selectOption('cohort');await page.getByRole('button',{name:'소모임 만들기',exact:true}).click();
  await expect(page.locator('.gn-detail .gn-card-tags')).toContainText('35사번 동기만');expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
  await page.screenshot({path:info.outputPath('cohort35-group-only.png')});
 });

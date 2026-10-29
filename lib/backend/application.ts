@@ -47,14 +47,14 @@ export function createApplication({env,rpcFactory=supabaseRpc}:{env:Env;rpcFacto
    if(request.method!=='GET')return response({error:'허용되지 않은 메서드입니다.'},405);
    if(!env.CRON_SECRET||!secretEqual(request.headers.get('authorization')||'',`Bearer ${env.CRON_SECRET}`))throw new ApiError(401,'AUTH','인증이 필요합니다.');
    const ids=HEADQUARTERS.filter(h=>tenantConfig(h.id).roster.length&&(h.id==='ax'||config(h.id).invite||config(h.id).admin)).map(h=>h.id);
-   const results=await Promise.all(ids.map(async id=>{
+   const results:{id:string;ok:boolean;code?:string}[]=await Promise.all(ids.map(async id=>{
     let rpc:Rpc|undefined;
     try{const b=await backend(id);rpc=b.rpc;const result=await b.service.handle('cron',request);if(!result.ok)throw new ApiError(result.status,'JOB','자동 작업에 실패했습니다.');
      try{await rpc('lunch_record_job',{p_ok:true,p_code:null});}catch{/* Legacy AX DB remains operational before the additive migration. */}
      return {id,ok:true};
     }catch(error){const code=error instanceof ApiError?error.code:'INTERNAL';if(rpc)try{await rpc('lunch_record_job',{p_ok:false,p_code:code});}catch{}
      console.error('LunchNode scheduled job failed',{headquarters:id,code});return {id,ok:false,code};}
-   }));return response({ok:results.every(r=>r.ok),results},results.every(r=>r.ok)?200:503);
+   }));if(env.AX35_INVITE_CODE){try{const c=config('ax');await rpcFactory(c.url!,c.key!)('ax35_group_cleanup',{});results.push({id:'ax35',ok:true});}catch{results.push({id:'ax35',ok:false,code:'CLEANUP'});}}return response({ok:results.every(r=>r.ok),results},results.every(r=>r.ok)?200:503);
   }
   const raw=request.headers.get('x-lunch-tenant')||'ax';if(!isHeadquarters(raw))throw new ApiError(400,'TENANT','본부를 선택해 주세요.');
   if(cohort!=='36'){

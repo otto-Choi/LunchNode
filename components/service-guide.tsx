@@ -13,7 +13,7 @@ function LunchGuide(){return <div className="service-guide-content" aria-label="
  </div>;}
 function GroupGuide(){return <div className="service-guide-content" aria-label="Group Node 이용 안내">
  <section><h3>1. 모임 찾기</h3><dl className="guide-meals"><div><dt>모임 둘러보기</dt><dd>앞으로 열릴 1회성 모임과 지속형 소모임을 봅니다.</dd></div><div><dt>내 모임</dt><dd>내가 만들거나 참여한 모임을 모아 봅니다.</dd></div><div><dt>소모임</dt><dd>지속적으로 모이는 소모임만 봅니다.</dd></div><div><dt>지난 모임</dt><dd>날짜가 지난 1회성 모임을 봅니다.</dd></div></dl></section>
- <section><h3>2. 만들기·참여하기</h3><p>‘모임 만들기’에서 1회성 모임 또는 소모임을 고르고, 설명·최소 인원·후보 날짜·모집 범위를 입력하세요. 모임을 만들면 자동으로 참여합니다.</p><dl className="guide-meals"><div><dt>전체</dt><dd>이용 가능한 모든 사번·본부에서 조회·참여할 수 있습니다.</dd></div><div><dt>동기만</dt><dd>작성자와 같은 사번끼리 본부에 관계없이 조회·참여할 수 있습니다.</dd></div><div><dt>우리 본부만</dt><dd>같은 본부의 사용자에게만 공개됩니다.</dd></div></dl><p>마음에 드는 모임에서 ‘참여하기’를 누르면 후보 날짜에 투표할 수 있습니다.</p></section>
+ <section><h3>2. 만들기·참여하기</h3><p>‘모임 만들기’에서 1회성 모임 또는 소모임을 고르고, 설명·최소 인원·후보 날짜·모집 범위를 입력하세요. 모임을 만들면 자동으로 참여합니다.</p><dl className="guide-meals"><div><dt>전체</dt><dd>이용 가능한 모든 사번·본부에서 조회·참여할 수 있습니다.</dd></div><div><dt>동기만</dt><dd>작성자와 같은 사번끼리 본부에 관계없이 조회·참여할 수 있습니다.</dd></div><div><dt>우리 본부만</dt><dd>같은 사번·본부의 사용자에게만 공개됩니다.</dd></div></dl><p>마음에 드는 모임에서 ‘참여하기’를 누르면 후보 날짜에 투표할 수 있습니다.</p></section>
  <section><h3>3. 날짜 투표와 확정</h3><p>참여 후 가능한 날짜를 모두 선택하세요. 최소 인원이 모여도 날짜가 자동 확정되지는 않습니다. 모임장이 후보 중 하나를 최종 확정합니다.</p><p>참여를 취소하면 내 투표도 삭제됩니다. 후보 날짜를 변경하면 해당 후보의 투표가 초기화되므로 다시 확인하세요.</p></section>
  <section><h3>4. 소모임 관리</h3><p>소모임은 날짜가 지나도 ‘모임 둘러보기’와 ‘소모임’에 남습니다. 모임장은 지난 1회성 모임도 소모임으로 전환하고 참여자를 추가할 수 있습니다.</p><p>Teams 페이지 등을 활용해 소모임 일정과 활동을 적극 관리해 보세요. 앱에서는 모집글·참여자·후보 일정·댓글을 관리할 수 있습니다.</p></section>
  </div>;}

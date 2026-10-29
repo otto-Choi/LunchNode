@@ -30,6 +30,7 @@ begin
  return public.ax35_group_user_json(uid);
 end;
 $$;
+create or replace function public.ax35_group_cleanup() returns boolean language plpgsql security definer set search_path=public as $$begin delete from public.ax35_group_sessions where expires_at<clock_timestamp();delete from public.ax35_group_auth_buckets where window_start<clock_timestamp()-interval '1 day';return true;end;$$;
 create or replace function public.ax35_group_health() returns boolean language sql security definer set search_path=public as $$ select true; $$;
 
 create or replace function public.ax35_group_identity(p_token_hash text)
@@ -105,6 +106,8 @@ revoke all on function public.ax35_group_register(text,text,text) from public,an
 grant execute on function public.ax35_group_register(text,text,text) to service_role;
 revoke all on function public.ax35_group_health() from public,anon,authenticated,service_role;
 grant execute on function public.ax35_group_health() to service_role;
+revoke all on function public.ax35_group_cleanup() from public,anon,authenticated,service_role;
+grant execute on function public.ax35_group_cleanup() to service_role;
 revoke all on function public.ax35_group_identity(text) from public,anon,authenticated,service_role;
 grant execute on function public.ax35_group_identity(text) to service_role;
 revoke all on function public.ax35_group_credentials(text) from public,anon,authenticated,service_role;

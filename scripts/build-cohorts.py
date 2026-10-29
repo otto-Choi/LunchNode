@@ -34,13 +34,14 @@ begin
  return public.ax35_group_user_json(uid);
 end;
 $$;
+create or replace function public.ax35_group_cleanup() returns boolean language plpgsql security definer set search_path=public as $$begin delete from public.ax35_group_sessions where expires_at<clock_timestamp();delete from public.ax35_group_auth_buckets where window_start<clock_timestamp()-interval '1 day';return true;end;$$;
 create or replace function public.ax35_group_health() returns boolean language sql security definer set search_path=public as $$ select true; $$;
 """]
 names=['identity','credentials','open_session','end_session','change_pin','rate_limit','require_session']
 for name in names:
  fn=re.search(r'(?m)^create or replace function public.ax_lunch_'+name+r'\(.*?\n\$\$;',source,re.S).group(0).replace('ax_lunch_','ax35_group_')
  parts.append(fn)
-for name,args in [('user_json','uuid'),('register','text,text,text'),('health',''),('identity','text'),('credentials','text'),('open_session','uuid,text,text'),('end_session','text'),('change_pin','text,text,text'),('rate_limit','text,integer'),('require_session','text')]:
+for name,args in [('user_json','uuid'),('register','text,text,text'),('health',''),('cleanup',''),('identity','text'),('credentials','text'),('open_session','uuid,text,text'),('end_session','text'),('change_pin','text,text,text'),('rate_limit','text,integer'),('require_session','text')]:
  parts.append(f'revoke all on function public.ax35_group_{name}({args}) from public,anon,authenticated,service_role;')
  if name not in ['user_json','require_session']:
   parts.append(f'grant execute on function public.ax35_group_{name}({args}) to service_role;')

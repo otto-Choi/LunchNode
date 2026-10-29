@@ -5,7 +5,7 @@ export function databasePools(connectionString=process.env.DATABASE_URL){
  const admin=new pg.Pool({connectionString,max:24});
  const service=new pg.Pool({connectionString,max:24,options:'-c role=service_role'});
  const rpc=async(name,args)=>{
-  if(!/^(?:(?:(?:global|ax|tmt)_)?lunch_[a-z_]+|group_node_api)$/.test(name))throw new Error('Invalid function');
+  if(!/^(?:(?:(?:global|ax|tmt)_)?lunch_[a-z_]+|ax35_group_[a-z_]+|group_node_api)$/.test(name))throw new Error('Invalid function');
   const keys=Object.keys(args);if(keys.some(k=>!/^p_[a-z_]+$/.test(k)))throw new Error('Invalid argument');
   try{const {rows}=await service.query(`select public.${name}(${keys.map((k,i)=>`${k} => $${i+1}`).join(',')}) as value`,keys.map(k=>(k==='p_groups'||k==='p_payload')?JSON.stringify(args[k]):args[k]));return rows[0].value;}
   catch(error){if(error.code==='42883')throw new ApiError(503,'RPC_MISSING','Missing RPC');const status={LN400:400,LN401:401,LN403:403,LN404:404,LN409:409,LN503:503}[error.code];if(status)throw new ApiError(status,error.code,error.message);throw error;}
