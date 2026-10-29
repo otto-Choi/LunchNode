@@ -77,6 +77,7 @@ Vercel의 Root Directory는 저장소 루트, Framework Preset은 Next.js로 설
 | `supabase/migrations/20261027151113_headquarters_administrators.sql` | 본부별 관리자 계정·통합 모임 관리 권한 |
 | `supabase/migrations/20261027154741_four_person_strict_meals.sql` | 기존 날짜의 필수 메뉴·4명/도시락만 5명 규칙 |
 | `supabase/migrations/20261028035057_lunchbox_pool.sql` | 10월 29일부터 도시락만 단일 묶음·그 외 최대 4명 |
+| `supabase/migrations/20261029234342_cohort_group_access.sql` | 35사번 전용 계정·동기 공개 범위·Group 전용 서비스 |
 | `supabase/schema.sql` | 비어 있는 프로젝트에 AX·Global 신규 설치 |
 | `supabase/global-schema.sql` | AX만 있는 기존 프로젝트에 Global 추가 |
 | `supabase/upgrade-shared-db.sql` | 기존 `lunch_*` 구조에서 AX 이름 변경 및 Global 추가. 재실행 지원 |
@@ -141,5 +142,5 @@ DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/lunch_test ALLOW_DATABA
 
 편성 기준과 예외는 [필수 메뉴·인원 제한 안내](docs/FOUR_PERSON_MATCHING.md)를 참고하세요.
 
-비어 있는 DB 신규 설치 순서는 `schema.sql` → Group Node → TMT → 연속 운영 → 지속형 소모임 → 관리자 계정 → 필수 메뉴·인원 제한 → 도시락 묶음입니다.
+비어 있는 DB 신규 설치 순서는 `schema.sql` → Group Node → TMT → 연속 운영 → 지속형 소모임 → 관리자 계정 → 필수 메뉴·인원 제한 → 도시락 묶음 → 사번별 Group 접근입니다.
 현재 운영 DB에는 적용된 마이그레이션을 다시 실행하지 않습니다.
