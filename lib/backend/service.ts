@@ -5,11 +5,11 @@ import { ApiError, makeRosterGate, hasRosterGate, rosterGateCookie, checkOrigin,
 export type Rpc = <T=unknown>(name: string, args: Record<string,unknown>) => Promise<T>;
 export type Snapshot = { version:number; state:State; people:Person[]; dates:string[]; user:Person|null; now:string };
 type Credentials = { id:string; pin_hash:string; user:Person };
-type Options = { rpc:Rpc; inviteCode:string; cronSecret:string; adminSecret?:string; origin?:string; secureCookies:boolean; retryDelay?:()=>Promise<void>; roster?:Person[]; policy?:MatchingPolicy; tenantId?:string; requireRosterGate?:boolean; administratorEnabled?:boolean; cookieStyle?:'legacy'|'namespaced' };
+type Options = { rpc:Rpc; inviteCode:string; cronSecret:string; adminSecret?:string; origin?:string; secureCookies:boolean; retryDelay?:()=>Promise<void>; roster?:Person[]; policy?:MatchingPolicy; tenantId?:string; requireRosterGate?:boolean; administratorEnabled?:boolean; freeNames?:boolean; groupOnly?:boolean; cookieStyle?:'legacy'|'namespaced' };
 export function createBackend(options:Options) {
   const {rpc}=options;const roster=options.roster||ROSTER,policy=options.policy||matchingPolicy,tenant=options.tenantId||'ax',cookieName=options.cookieStyle==='namespaced'?`${tenant}_lunch_session`:tenant==='ax'?'lunch_session':`lunch_session_${tenant}`,gateName=options.cookieStyle==='namespaced'?`${tenant}_lunch_roster`:`lunch_roster_${tenant}`;
   const loginRoster=options.administratorEnabled?[...roster,{id:'administrator',name:'관리자',className:'운영자',defaultStatus:'absent' as const,isAdmin:true}]:roster;
-  const member=(name:string)=>loginRoster.find(p=>p.name===name.normalize('NFKC').trim());
+  const member=(name:string)=>options.freeNames?(/^[\p{L}\p{M}\p{N} .'-]{2,40}$/u.test(name)&&!['관리자','운영자'].includes(name)?{id:'',name,className:'35사번',defaultStatus:'unset' as const}:undefined):loginRoster.find(p=>p.name===name.normalize('NFKC').trim());
   const hashToken=(token:string)=>digest(tenant==='ax'?token:`${tenant}:${token}`);
   const cookie=(token:string)=>sessionCookie(token,options.secureCookies,cookieName);
   const delay=options.retryDelay||(()=>new Promise<void>(resolve=>setTimeout(resolve,Math.floor(Math.random()*12)+2)));
@@ -55,10 +55,10 @@ export function createBackend(options:Options) {
       if(!options.inviteCode)throw new ApiError(503,'CONFIG','초대 코드 설정이 필요합니다.');
       if(body.action==='roster'){
         if(!hasRosterGate(request,gateName,tenant,options.inviteCode))throw new ApiError(403,'INVITE','초대 코드를 먼저 확인해 주세요.');
-        return response({people:loginRoster});
+        return response({people:loginRoster,...(options.freeNames?{freeNames:true}:{} )});
       }
       if(typeof body.invite!=='string'||!secretEqual(body.invite,options.inviteCode))throw new ApiError(403,'INVITE','초대 코드가 올바르지 않습니다.');
-      return response({people:loginRoster},200,rosterGateCookie(makeRosterGate(tenant,options.inviteCode),options.secureCookies,gateName));
+      return response({people:loginRoster,...(options.freeNames?{freeNames:true}:{} )},200,rosterGateCookie(makeRosterGate(tenant,options.inviteCode),options.secureCookies,gateName));
     }
     if(body.action==='logout'){
       await rpc('lunch_end_session',{p_token_hash:tokenHash(request)});
@@ -68,7 +68,7 @@ export function createBackend(options:Options) {
     if(options.requireRosterGate&&body.action==='login'&&!hasRosterGate(request,gateName,tenant,options.inviteCode))throw new ApiError(403,'INVITE','초대 코드를 먼저 확인해 주세요.');
     const name=typeof body.name==='string'?body.name.normalize('NFKC').trim():'';
     const pin=pinValue(body.pin);await throttle(request,name);
-    if(!member(name))throw new ApiError(400,'ROSTER','본부 명단에 등록된 이름만 이용할 수 있습니다.');
+    if(!member(name))throw new ApiError(400,'ROSTER',options.freeNames?'이름은 2~40자로 입력해 주세요. 관리자·운영자 이름은 사용할 수 없습니다.':'본부 명단에 등록된 이름만 이용할 수 있습니다.');
     if(body.action==='register'&&member(name)?.isAdmin)throw new ApiError(403,'ADMIN_ACCOUNT','관리자 계정은 최초 등록 대신 로그인해 주세요.');
     const token=newToken();let user:Person;
     if(body.action==='register') {
@@ -84,6 +84,7 @@ export function createBackend(options:Options) {
     return response({user},200,cookie(token));
   }
   async function state(request:Request) {
+    if(options.groupOnly){if(request.method!=='GET')throw new ApiError(403,'GROUP_ONLY','이 사번은 Group Node만 이용할 수 있습니다.');return response({demo:false,user:await requireIdentity(request),cohort:'35',groupOnly:true,people:[],dates:[],state:{choices:{},days:{},events:[]},now:new Date().toISOString()});}
     if(request.method==='GET')return response(await stateOperation(request));
     checkOrigin(request,options.origin);await requireIdentity(request);const body=await readJson(request);
     if(!Array.isArray(body.dates)||body.dates.length<1||body.dates.length>100||body.dates.some(d=>typeof d!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(d)))throw new ApiError(400,'DATES','날짜를 선택해 주세요.');
@@ -155,6 +156,7 @@ export function createBackend(options:Options) {
     try {
       const allowed=(endpoint==='auth'||endpoint==='state')?['GET','POST']:(endpoint==='profile'||endpoint==='admin')?['POST']:['GET'];
       if(!allowed.includes(request.method))return response({error:'허용되지 않은 메서드입니다.',code:'METHOD'},405);
+      if(options.groupOnly&&['admin','cron'].includes(endpoint))throw new ApiError(403,'GROUP_ONLY','이 사번은 Group Node만 이용할 수 있습니다.');
       if(endpoint==='health'){await rpc('lunch_health',{});return response({ok:true});}
       return await ({auth,state,profile,cron,admin}[endpoint])(request);
     }catch(error){return errorResponse(error);}

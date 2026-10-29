@@ -6,7 +6,7 @@ import {createBackend} from '../lib/backend/service.ts';
 import {hashPin,digest} from '../lib/backend/security.ts';
 import {ROSTER} from '../lib/roster.ts';
 const db=databasePools();after(()=>db.close());
-const files=(await fs.readdir('supabase/migrations')).filter(f=>f.endsWith('.sql')&&f!=='20261023090100_global_tables.sql'&&!f.endsWith('_group_node.sql')&&!f.endsWith('_tmt_headquarters.sql')&&!f.endsWith('_continuous_operation.sql')&&!f.endsWith('_persistent_clubs.sql')&&!f.endsWith('_headquarters_administrators.sql')&&!f.endsWith('_four_person_strict_meals.sql')&&!f.endsWith('_lunchbox_pool.sql')).sort();
+const files=(await fs.readdir('supabase/migrations')).filter(f=>f.endsWith('.sql')&&f!=='20261023090100_global_tables.sql'&&!f.endsWith('_group_node.sql')&&!f.endsWith('_tmt_headquarters.sql')&&!f.endsWith('_continuous_operation.sql')&&!f.endsWith('_persistent_clubs.sql')&&!f.endsWith('_headquarters_administrators.sql')&&!f.endsWith('_four_person_strict_meals.sql')&&!f.endsWith('_lunchbox_pool.sql')&&!f.endsWith('_cohort_group_access.sql')).sort();
 // Explicit test-only opt-in is checked before any destructive setup.
 await db.admin.query('drop schema public cascade; create schema public;');
 await db.admin.query(`do $$begin if not exists(select 1 from pg_roles where rolname='anon') then create role anon; end if; if not exists(select 1 from pg_roles where rolname='authenticated') then create role authenticated; end if; if not exists(select 1 from pg_roles where rolname='service_role') then create role service_role; end if; end$$;`);
@@ -565,4 +565,49 @@ test('Oct 29 pool rules enforce one strict-only pool and four-person ordinary gr
    for(const [day,value] of Object.entries(snap.state.days))if(value.phase==='final')assert.deepEqual(saved.state.days[day],value);
   }finally{await db.admin.query(rematch);await db.admin.query(initial);await db.admin.query(`update ${tenant}_lunch_settings set start_date=$1`,[settings.start_date]);}
  }
+});
+
+test('35 free-name authentication is isolated, Group-only, and cohort visibility is enforced on every group action',async()=>{
+ const before=(await db.admin.query("select 'ax' tenant,version,data from ax_lunch_state union all select 'global',version,data from global_lunch_state union all select 'tmt',version,data from tmt_lunch_state")).rows;
+ const accounts=(await db.admin.query("select 'ax' tenant,id,pin_hash from ax_lunch_users union all select 'global',id,pin_hash from global_lunch_users union all select 'tmt',id,pin_hash from tmt_lunch_users")).rows;
+ const sql=await fs.readFile('supabase/cohorts.sql','utf8');await db.admin.query(sql);await db.admin.query(sql);
+ assert.deepEqual((await db.admin.query("select 'ax' tenant,version,data from ax_lunch_state union all select 'global',version,data from global_lunch_state union all select 'tmt',version,data from tmt_lunch_state")).rows,before);
+ const {createApplication}=await import('../lib/backend/application.ts');
+ const app=createApplication({env:{SUPABASE_URL:'https://db.test',SUPABASE_SERVICE_ROLE_KEY:'service',AX35_INVITE_CODE:'AX35',AX_INVITE_CODE:'ci-invitation',AX_ADMIN_SECRET:'ci-operator-secret-at-least-32-chars',APP_ORIGIN:'https://lunch.test',CRON_SECRET:'ci'},rpcFactory:()=>db.rpc});
+ const call=(endpoint,body,cookie='',cohort='35')=>app.handle(endpoint,new Request('https://lunch.test/api/'+endpoint,{method:body?'POST':'GET',headers:{origin:'https://lunch.test','content-type':'application/json','x-lunch-tenant':'ax','x-lunch-cohort':cohort,cookie},...(body?{body:JSON.stringify(body)}:{})}));
+ assert.equal((await call('auth',{action:'unlock',invite:'ci-invitation'})).status,403);
+ const gateResponse=await call('auth',{action:'unlock',invite:'AX35'});assert.equal(gateResponse.status,200);const gate=gateResponse.headers.get('set-cookie').split(';')[0];
+ assert.equal((await call('auth',{action:'register',name:'관리자',pin:'123456'},gate)).status,400);
+ const registered=await call('auth',{action:'register',name:'권도영',pin:'123456'},gate);assert.equal(registered.status,200,await registered.clone().text());const user=(await registered.json()).user,cookie=registered.headers.get('set-cookie').split(';')[0];
+ assert.match(cookie,/^ax35_lunch_session=/);assert.equal((await call('auth',{action:'register',name:'권도영',pin:'123456'},gate)).status,409);
+ const profile=await (await call('state',undefined,cookie)).json();assert.equal(profile.groupOnly,true);assert.equal(profile.cohort,'35');assert.deepEqual(profile.dates,[]);
+ assert.equal((await call('state',{dates:[date],choice:{status:'join',meal:'any'}},cookie)).status,403);assert.equal((await call('admin',{action:'recover'},cookie)).status,403);assert.equal((await call('cron',undefined,cookie)).status,403);
+ assert.equal((await call('state',undefined,cookie,'36')).status,401);
+ const hash=digest('ax35:'+cookie.split('=')[1]);const group=(tenant,token,action,payload={})=>db.rpc('group_node_api',{p_tenant:tenant,p_token_hash:token,p_action:action,p_payload:payload});
+ const regular=(await db.admin.query("select s.token_hash,r.id from global_lunch_sessions s join global_lunch_roster r on r.id=s.user_id where not r.is_admin and s.expires_at>clock_timestamp() limit 1")).rows[0];
+ const ax=(await db.admin.query("select s.token_hash,r.id from ax_lunch_sessions s join ax_lunch_roster r on r.id=s.user_id where not r.is_admin and s.expires_at>clock_timestamp() limit 1")).rows[0];
+ const input={kind:'club',title:'cohort QA',description:'',category:'etc',visibility:'cohort',minPeople:2,dates:[]};const ids=[];
+ try{
+  const own35=await group('ax35',hash,'create',input);ids.push(own35.id);
+  const own36=await group('global',regular.token_hash,'create',input);ids.push(own36.id);
+  assert.equal(own35.proposer.cohort,'35');assert.equal(own36.proposer.cohort,'36');
+  for(const [tenant,token,id] of [['ax35',hash,own36.id],['global',regular.token_hash,own35.id]]){
+   assert.ok(!(await group(tenant,token,'list')).meetups.some(m=>m.id===id));
+   for(const action of ['detail','join','comment','participant_roster','add_participant'])await assert.rejects(group(tenant,token,action,{id,version:0,body:'forged',tenant:'ax35',userId:user.id}),e=>e.status===404);
+  }
+  assert.equal((await group('ax',ax.token_hash,'detail',{id:own36.id})).id,own36.id);
+  const shared=await group('global',regular.token_hash,'create',{...input,visibility:'all'});ids.push(shared.id);
+  await group('ax35',hash,'join',{id:shared.id});await group('ax35',hash,'comment',{id:shared.id,body:'35 참여'});
+  const current=await group('global',regular.token_hash,'detail',{id:shared.id});assert.ok(current.participants.some(p=>p.tenant==='ax35'));
+  await assert.rejects(group('global',regular.token_hash,'update',{...input,id:shared.id,version:current.version,visibility:'cohort'}),e=>e.status===409);
+  const roster=await group('global',regular.token_hash,'participant_roster',{id:own36.id});assert.ok(roster.people.every(p=>p.cohort==='36'));
+  await assert.rejects(group('global',regular.token_hash,'add_participant',{id:own36.id,version:own36.version,tenant:'ax35',userId:user.id}),e=>e.status===403);
+  const private36=await group('ax',ax.token_hash,'create',{...input,visibility:'headquarters'});ids.push(private36.id);
+  await assert.rejects(group('ax35',hash,'detail',{id:private36.id}),e=>e.status===404);
+  const anon=(await db.admin.query("select has_table_privilege('anon','ax35_group_users','select') users,has_table_privilege('service_role','ax35_group_users','select') direct,has_function_privilege('anon','ax35_group_register(text,text,text)','execute') register")).rows[0];assert.deepEqual(anon,{users:false,direct:false,register:false});
+ }finally{await db.admin.query('delete from group_node_meetups where id=any($1::uuid[])',[ids]);}
+ const changed=await call('profile',{currentPin:'123456',newPin:'654321'},cookie);assert.equal(changed.status,200);assert.equal((await call('state',undefined,cookie)).status,401);
+ const login=await call('auth',{action:'login',name:'권도영',pin:'654321'},gate);assert.equal(login.status,200);const logged=login.headers.get('set-cookie').split(';')[0];assert.equal((await call('auth',{action:'logout'},logged)).status,200);assert.equal((await call('state',undefined,logged)).status,401);
+ assert.deepEqual((await db.admin.query("select 'ax' tenant,id,pin_hash from ax_lunch_users union all select 'global',id,pin_hash from global_lunch_users union all select 'tmt',id,pin_hash from tmt_lunch_users")).rows,accounts);
+ assert.deepEqual((await db.admin.query("select 'ax' tenant,version,data from ax_lunch_state union all select 'global',version,data from global_lunch_state union all select 'tmt',version,data from tmt_lunch_state")).rows,before);
 });

@@ -1,0 +1,10 @@
+import {isHeadquarters,type HeadquartersId} from './headquarters.ts';
+export const COHORTS=[{id:'36',label:'36사번'},{id:'35',label:'35사번'}] as const;
+export type CohortId=typeof COHORTS[number]['id'];
+export type AccountTenantId=HeadquartersId|'ax35';
+export const isCohort=(value:unknown):value is CohortId=>COHORTS.some(c=>c.id===value);
+export const isAccountTenant=(value:unknown):value is AccountTenantId=>value==='ax35'||isHeadquarters(value);
+export const accountHeadquarters=(tenant:AccountTenantId):HeadquartersId=>tenant==='ax35'?'ax':tenant;
+export const accountCohort=(tenant:AccountTenantId):CohortId=>tenant==='ax35'?'35':'36';
+export const accountTenant=(headquarters:HeadquartersId,cohort:CohortId):AccountTenantId|undefined=>cohort==='36'?headquarters:headquarters==='ax'?'ax35':undefined;
+export const hasLunch=(cohort:CohortId)=>cohort==='36';

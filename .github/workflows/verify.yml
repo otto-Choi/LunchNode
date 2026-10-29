@@ -34,6 +34,10 @@ jobs:
           cache: npm
       - run: npm ci --no-audit --no-fund
       - run: npm audit --omit=dev --audit-level=high
+      - name: Generate cohort access migration name
+        run: |
+          npx --yes supabase@2.81.3 migration --help
+          npx --yes supabase@2.81.3 migration new cohort_group_access
       - name: Check generated SQL and cutover guide
         run: |
           python scripts/build-global-schema.py
@@ -43,6 +47,7 @@ jobs:
           python scripts/build-headquarters-administrators.py
           python scripts/build-four-person-matching.py
           python scripts/build-lunchbox-pool.py
+          python scripts/build-cohorts.py
           python scripts/build-before-cutover.py
           git diff --exit-code -- supabase/ CUTOVER_GUIDE.md
       - run: npm run typecheck

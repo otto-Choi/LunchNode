@@ -29,7 +29,7 @@ test('service guide covers current lunch and group flows and links to headquarte
  await dialog.getByRole('button',{name:'본부 목록 보기'}).click();await expect(page.getByRole('dialog',{name:'본부 목록',exact:true})).toBeVisible();
  await page.getByRole('button',{name:'닫기',exact:true}).click();await page.getByRole('button',{name:'Group Node',exact:true}).click();
  await page.getByRole('button',{name:'+ 모임 만들기',exact:true}).click();
- await expect(page.getByLabel('모집 범위').locator('option[value="all"]')).toHaveText('전체 본부');
+ await expect(page.getByLabel('모집 범위').locator('option[value="all"]')).toHaveText('전체');
  for(const h of HEADQUARTERS)await expect(page.getByLabel('모집 범위').locator('option[value="all"]')).not.toContainText(h.label);
  await navigateMenu(page,'이용 안내');dialog=page.getByRole('dialog',{name:'이용 안내',exact:true});await expect(dialog.getByRole('button',{name:'Group Node',exact:true})).toHaveAttribute('aria-pressed','true');
 });
