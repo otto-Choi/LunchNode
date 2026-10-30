@@ -13,7 +13,7 @@ test('one-off conversion, persistent club creation, dedicated navigation and own
  await navigateMenu(page,'모임 둘러보기');await page.getByRole('button').filter({has:page.getByRole('heading',{name:title,exact:true})}).click();
  page.once('dialog',d=>d.accept());await page.getByRole('button',{name:'소모임으로 전환',exact:true}).click();await expect(page.locator('.gn-detail .gn-badge')).toHaveText('소모임');
  await expect(page.locator('.gn-detail .gn-note')).toContainText('Teams');
- await page.getByRole('button',{name:'참여자 추가',exact:true}).click();await page.getByLabel('추가할 참여자',{exact:true}).selectOption({label:'류지환 · IOA'});
+ await page.getByRole('button',{name:'참여자 추가',exact:true}).click();await page.getByLabel('추가할 참여자',{exact:true}).selectOption({label:'류지환 · 36사번 · IOA'});
  await page.getByRole('button',{name:'추가',exact:true}).click();await expect(page.locator('.gn-people')).toContainText('류지환');await expect(page.locator('.gn-people')).toContainText('Global');
  await navigateMenu(page,'소모임');await expect(page.getByRole('heading',{name:title,exact:true})).toBeVisible();
  await page.getByRole('button',{name:'+ 모임 만들기',exact:true}).click();await page.getByLabel('모임 유형',{exact:true}).selectOption('club');

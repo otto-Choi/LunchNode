@@ -5,6 +5,7 @@ const db=databasePools();
 await db.admin.query("delete from ax_lunch_sessions;delete from ax_lunch_users u using ax_lunch_roster r where u.id=r.id and not r.is_admin;truncate ax_lunch_auth_buckets;update ax_lunch_state set version=0,data='{\"choices\":{},\"days\":{},\"events\":[]}'::jsonb");
 await db.admin.query("delete from global_lunch_sessions;delete from global_lunch_users u using global_lunch_roster r where u.id=r.id and not r.is_admin;truncate global_lunch_auth_buckets;update global_lunch_state set version=0,data='{\"choices\":{},\"days\":{},\"events\":[]}'::jsonb");
 await db.admin.query("delete from tmt_lunch_sessions;delete from tmt_lunch_users u using tmt_lunch_roster r where u.id=r.id and not r.is_admin;truncate tmt_lunch_auth_buckets;update tmt_lunch_state set version=0,data='{\"choices\":{},\"days\":{},\"events\":[]}'::jsonb");
+await db.admin.query('delete from ax35_group_sessions;delete from ax35_group_users;truncate ax35_group_auth_buckets');
 const server=http.createServer(async(req,res)=>{
  try{
   if(req.url==='/health'){res.end('ok');return;}

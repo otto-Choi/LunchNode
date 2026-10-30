@@ -77,6 +77,7 @@ Vercel의 Root Directory는 저장소 루트, Framework Preset은 Next.js로 설
 | `supabase/migrations/20261027151113_headquarters_administrators.sql` | 본부별 관리자 계정·통합 모임 관리 권한 |
 | `supabase/migrations/20261027154741_four_person_strict_meals.sql` | 기존 날짜의 필수 메뉴·4명/도시락만 5명 규칙 |
 | `supabase/migrations/20261028035057_lunchbox_pool.sql` | 10월 29일부터 도시락만 단일 묶음·그 외 최대 4명 |
+| `supabase/migrations/20261029234342_cohort_group_access.sql` | 35사번 전용 계정·동기 공개 범위·Group 전용 서비스 |
 | `supabase/schema.sql` | 비어 있는 프로젝트에 AX·Global 신규 설치 |
 | `supabase/global-schema.sql` | AX만 있는 기존 프로젝트에 Global 추가 |
 | `supabase/upgrade-shared-db.sql` | 기존 `lunch_*` 구조에서 AX 이름 변경 및 Global 추가. 재실행 지원 |
@@ -109,11 +110,15 @@ python scripts/build-before-cutover.py
 
 `vercel.json`은 UTC 기준 13:00(일~목), 02:00(월~금)에 `/api/cron`을 호출합니다. Vercel이 `Authorization: Bearer <CRON_SECRET>`을 전송해야 합니다. 실제 작업은 각 본부의 운영일·시각을 다시 검사합니다. 예약 작업이 늦거나 누락되면 상태 조회와 운영자 복구에서도 지난 작업을 보완합니다. 예약 호출의 정확한 실행 시각과 플랫폼 이용 조건은 Vercel 운영 환경에서 확인해야 합니다.
 
+## 사번과 서비스
+
+첫 화면에서 사번을 선택합니다. 36사번은 기존 본부별 명단과 Lunch/Group Node를 유지합니다. 35사번은 AX Node에서 `AX35` 확인 후 이름을 직접 입력해 가입하며 Group Node만 이용합니다. 서버 전용 환경변수는 `AX35_INVITE_CODE`입니다. [계정·공개 범위 설계](docs/COHORTS.md)를 참고하세요.
+
 ## 본부 목록과 이용 안내
 
 왼쪽 메뉴 하단의 **본부 목록**에서 추가된 순서와 이용 가능 여부를 확인합니다. 표시 이름과 순서는 `lib/headquarters.ts`의 중앙 목록을 사용하고, 상태는 `/api/tenants`에서 불러옵니다. 본부를 추가할 때 이 목록 뒤에 추가하면 본부 목록 화면에도 반영됩니다. 초대코드나 운영자 키는 표시하지 않습니다.
 
-**이용 안내** 안에서 Lunch Node·Group Node 안내를 전환할 수 있습니다. Group Node의 모집 범위는 **전체 본부 / 우리 본부만**으로 표시하며 본부 이름을 나열하지 않습니다.
+**이용 안내** 안에서 Lunch Node·Group Node 안내를 전환할 수 있습니다. Group Node의 모집 범위는 **전체 / 동기만 / 우리 본부만**으로 표시하며 본부 이름을 나열하지 않습니다.
 
 ## QA
 
@@ -137,5 +142,5 @@ DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/lunch_test ALLOW_DATABA
 
 편성 기준과 예외는 [필수 메뉴·인원 제한 안내](docs/FOUR_PERSON_MATCHING.md)를 참고하세요.
 
-비어 있는 DB 신규 설치 순서는 `schema.sql` → Group Node → TMT → 연속 운영 → 지속형 소모임 → 관리자 계정 → 필수 메뉴·인원 제한 → 도시락 묶음입니다.
+비어 있는 DB 신규 설치 순서는 `schema.sql` → Group Node → TMT → 연속 운영 → 지속형 소모임 → 관리자 계정 → 필수 메뉴·인원 제한 → 도시락 묶음 → 사번별 Group 접근입니다.
 현재 운영 DB에는 적용된 마이그레이션을 다시 실행하지 않습니다.

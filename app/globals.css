@@ -187,3 +187,7 @@ body{color:var(--ink)}
  .service-guide-content h3{font-size:18px}
  .headquarters-list li{gap:10px}.headquarters-status{font-size:13px;padding:4px 8px}
 }
+
+.stats-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+.calendar-dates .status-label.unset{visibility:hidden}
+.auth-form input[name=name]{min-height:44px}

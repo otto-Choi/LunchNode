@@ -26,18 +26,19 @@ test('register, change attendance and menu, reload, and log out',async({page},in
  const openDates=payload.dates.filter((d:string)=>new Date(payload.now)<new Date(`${d}T11:00:00+09:00`));
  const title=(d:string)=>`${Number(d.slice(5,7))}월 ${Number(d.slice(8))}일`;
  const dateButton=(d:string)=>page.getByRole('button',{name:`${title(d)} 선택`,exact:true});
- const blankArea=async(d:string)=>{const card=page.locator('.date-cell').filter({has:dateButton(d)});const box=await card.boundingBox();if(!box)throw new Error('Date card missing');await card.click({position:{x:box.width-6,y:box.height-6}});};
+ const showDate=async(d:string)=>{if(info.project.name!=='desktop')return;for(let i=0;i<12;i++){const label=await page.locator('.month-navigation strong').innerText();const match=label.match(/(\d{4})년\s*(\d+)월/);if(!match)throw Error('Calendar month missing');const current=match[1]+'-'+match[2].padStart(2,'0');if(current===d.slice(0,7))return;await page.getByRole('button',{name:current<d.slice(0,7)?'다음 달':'이전 달',exact:true}).click();}throw Error('Calendar month could not be reached');};
+ const blankArea=async(d:string)=>{await showDate(d);const card=page.locator('.date-cell').filter({has:dateButton(d)});const box=await card.boundingBox();if(!box)throw new Error('Date card missing');await card.click({position:{x:box.width-6,y:box.height-6}});};
  await blankArea(openDates[1]);await expect(dateButton(openDates[1])).toHaveAttribute('aria-pressed','true');
  const readState=async()=>{const r=await page.request.get('/api/state');expect(r.ok()).toBe(true);return r.json();};
  const beforeBulk=await readState();const untouched=beforeBulk.state.choices[openDates[2]][payload.user.id];
  await page.getByRole('button',{name:'여러 날짜 참석/불참',exact:true}).click();
  await expect(page.getByRole('button',{name:'참석으로 저장',exact:true})).toBeDisabled();
  const closedDate=payload.dates.find((d:string)=>new Date(payload.now)>=new Date(`${d}T11:00:00+09:00`));
- if(closedDate){const button=page.locator(`.date-hit-target[aria-label="${title(closedDate)} 선택"]`);const today=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Seoul',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(payload.now));if(info.project.name==='mobile'&&closedDate<today)await expect(button).toHaveCount(0);else await expect(button).toBeDisabled();}
+ if(closedDate){const button=page.locator(`.date-hit-target[aria-label="${title(closedDate)} 선택"]`);const today=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Seoul',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(payload.now));if(info.project.name==='mobile'&&closedDate<today)await expect(button).toHaveCount(0);else{await showDate(closedDate);await expect(button).toBeDisabled();}}
  await blankArea(openDates[0]);await expect(page.locator('.date-cell.picked')).toHaveCount(1);
  await dateButton(openDates[0]).click();await expect(page.locator('.date-cell.picked')).toHaveCount(0);
- await blankArea(openDates[0]);await dateButton(openDates[1]).focus();await page.keyboard.press('Space');
- await expect(page.locator('.date-cell.picked')).toHaveCount(2);
+ await blankArea(openDates[0]);await showDate(openDates[1]);await dateButton(openDates[1]).focus();await page.keyboard.press('Space');
+ await expect(page.getByLabel('선택한 날짜').locator('button')).toHaveCount(2);
  await expect(page.getByLabel('선택한 날짜')).toContainText(title(openDates[0]));await expect(page.locator('.bulk-summary')).toContainText('2일 · 참석');
  await page.getByRole('button',{name:`${title(openDates[1])} 선택 해제`,exact:true}).click();await expect(page.locator('.bulk-summary')).toContainText('1일 · 참석');await dateButton(openDates[1]).click();
  await expect(page.getByRole('group',{name:'일괄 메뉴'}).locator('.meal-option')).toHaveText(['도시락만','도시락선호','상관없음','외식선호','외식만']);

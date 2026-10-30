@@ -43,6 +43,7 @@ jobs:
           python scripts/build-headquarters-administrators.py
           python scripts/build-four-person-matching.py
           python scripts/build-lunchbox-pool.py
+          python scripts/build-cohorts.py
           python scripts/build-before-cutover.py
           git diff --exit-code -- supabase/ CUTOVER_GUIDE.md
       - run: npm run typecheck
